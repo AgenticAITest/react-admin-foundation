@@ -54,7 +54,20 @@ const swaggerOptions = {
         description: 'Development server',
       },
     ],
-    // Add security schemes, components (schemas), etc. here if needed
+    components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+        }
+      }
+    },
+    security: [
+      {
+        bearerAuth: []
+      }
+    ]
   },
   // Path to your route files where JSDoc comments are located
   apis: [
