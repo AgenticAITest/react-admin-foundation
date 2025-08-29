@@ -50,7 +50,7 @@ const swaggerOptions = {
     },
     servers: [
       {
-        url: 'http://localhost:3000', // Replace with your API base URL
+        url: 'http://localhost:5000', // Updated to match actual server port
         description: 'Development server',
       },
     ],
