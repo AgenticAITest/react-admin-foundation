@@ -9,6 +9,7 @@ import tenantRoutes from "./routes/system/tenant";
 import optionRoutes from "./routes/system/option";
 import userRoutes from "./routes/system/user";
 import departmentRoutes from "./routes/demo/department";
+import masterRoutes from "./routes/master";
 import { rateLimit } from 'express-rate-limit'
 import fileUpload from "express-fileupload";
 
@@ -60,6 +61,7 @@ const swaggerOptions = {
     './src/server/routes/auth/*.ts',
     './src/server/routes/system/*.ts',
     './src/server/routes/demo/*.ts',
+    './src/server/routes/master.ts',
   ], 
 };
 
@@ -78,6 +80,9 @@ app.use('/api/system/user', userRoutes);
 
 // demo routes
 app.use('/api/demo/department', departmentRoutes);
+
+// master data routes
+app.use('/api/master', masterRoutes);
 
 ViteExpress.listen(app, 5000, () =>
   console.log("Server is listening on port 5000..."),
