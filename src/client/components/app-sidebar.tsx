@@ -137,7 +137,6 @@ const data = {
           id: "master-data",
           title: "Master Data",
           url: "/console/system/master-data",
-          permissions: "system.master.view",
         },
       ],
     },
