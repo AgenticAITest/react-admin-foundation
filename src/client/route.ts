@@ -40,6 +40,7 @@ import CardShowcase from "./pages/console/showcase/CardShowcase";
 import TabShowcase from "./pages/console/showcase/TabShowcase";
 import FormShowcase from "./pages/console/showcase/FormShowcase";
 import RegisterTenant from "./pages/auth/RegisterTenant";
+import MasterData from "./pages/console/system/master-data/MasterData";
 
 export const router = createBrowserRouter([
   {
@@ -140,6 +141,7 @@ export const router = createBrowserRouter([
                   { path: ":id/reset-password", Component: UserResetPassword }
                 ]
               },
+              { path: "master-data", Component: MasterData },
             ]
           }
         ],
