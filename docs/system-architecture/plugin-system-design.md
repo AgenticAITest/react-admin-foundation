@@ -124,24 +124,47 @@ export type ModuleId = keyof typeof moduleRegistry;
 export type ModuleConfig = typeof moduleRegistry[ModuleId];
 ```
 
-### 4. Database Integration Pattern
+### 4. Database Architecture: Schema-Per-Tenant
 
-Modules define their database schema following foundation patterns:
+**Architecture Decision: Each tenant has its own PostgreSQL schema for complete data isolation**
+
+#### Database Structure:
+```
+Database: business_foundation
+├── public (shared foundation tables)
+│   ├── tenants                    # Tenant registry
+│   ├── global_users               # Cross-tenant user accounts  
+│   ├── system_modules             # Available modules
+│   └── system_configuration       # Global settings
+├── tenant_acme (tenant: acme.com)
+│   ├── users                      # Tenant-specific users
+│   ├── roles                      # Tenant-specific roles
+│   ├── permissions                # Tenant-specific permissions
+│   ├── inventory_items            # Business module tables
+│   ├── inventory_categories       # Business module tables
+│   └── [all other module tables]
+├── tenant_widget_corp (tenant: widget-corp.com)
+│   ├── users                      # Isolated tenant data
+│   ├── roles
+│   ├── permissions
+│   ├── inventory_items
+│   └── [all other module tables]
+└── tenant_[other_tenants]
+```
+
+#### Module Schema Definition (Business Analyst View):
+Business analysts write simple, clean schema definitions without tenant complexity:
 
 ```typescript
 // modules/inventory/database/schema.ts
 import { relations } from 'drizzle-orm';
-import { pgTable, uuid, varchar, integer, decimal, timestamp, boolean } from 'drizzle-orm/pg-core';
-import { tenant } from '@foundation/server/lib/db/schema/system';
+import { pgTable, uuid, varchar, integer, decimal, timestamp, boolean, uniqueIndex } from 'drizzle-orm/pg-core';
 
-// All module tables must include tenantId for multi-tenancy
+// Simple table definition - NO tenant_id needed!
 export const inventoryItems = pgTable('inventory_items', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-  tenantId: uuid('tenant_id')
-    .notNull()
-    .references(() => tenant.id),
   
-  // Business fields
+  // Business fields only
   sku: varchar('sku', { length: 100 }).notNull(),
   name: varchar('name', { length: 255 }).notNull(),
   description: varchar('description', { length: 500 }),
@@ -157,22 +180,67 @@ export const inventoryItems = pgTable('inventory_items', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull().$onUpdate(() => new Date()),
 }, (t) => [
-  // Tenant-scoped unique constraints
-  uniqueIndex("inventory_items_sku_tenant_idx").on(t.tenantId, t.sku),
+  // Simple unique constraints
+  uniqueIndex("inventory_items_sku_idx").on(t.sku),
 ]);
 
-// Relations follow foundation patterns
+// Clean relations without tenant complexity
 export const inventoryItemsRelations = relations(inventoryItems, ({ one, many }) => ({
-  tenant: one(tenant, {
-    fields: [inventoryItems.tenantId],
-    references: [tenant.id],
-  }),
   category: one(inventoryCategories, {
     fields: [inventoryItems.categoryId],
     references: [inventoryCategories.id],
   }),
   stockMovements: many(stockMovements),
 }));
+```
+
+#### Foundation Abstraction Layer:
+The foundation handles all tenant complexity behind the scenes:
+
+```typescript
+// foundation/server/lib/db/tenant-connection.ts
+export const getTenantDb = (tenantId: string) => {
+  const schemaName = `tenant_${tenantId}`;
+  return drizzle(connectionPool, { 
+    schema: allModuleSchemas,
+    schemaFilter: (tableName) => `${schemaName}.${tableName}`
+  });
+};
+
+// foundation/server/middleware/authMiddleware.ts
+export const authenticated = () => async (req, res, next) => {
+  // ... auth logic ...
+  
+  // Automatically set tenant-scoped database connection
+  req.db = getTenantDb(user.activeTenantId);
+  next();
+};
+```
+
+#### Automatic Schema Deployment:
+When modules are deployed, they're automatically applied to all tenant schemas:
+
+```typescript
+// foundation/tools/deploy-module.ts
+export const deployModuleToAllTenants = async (moduleName: string) => {
+  const tenants = await getActiveTenants();
+  
+  for (const tenant of tenants) {
+    const tenantDb = getTenantDb(tenant.id);
+    await applyModuleSchema(tenantDb, moduleName);
+    await seedModuleData(tenantDb, moduleName);
+  }
+};
+```
+
+#### Benefits of Schema-Per-Tenant:
+✅ **True Data Isolation**: Physical separation prevents any cross-tenant data access
+✅ **Superior Performance**: Each tenant has dedicated tables and indexes
+✅ **Easy Backup/Restore**: `pg_dump --schema=tenant_acme` for specific tenant
+✅ **Scalability**: Can move tenants to different databases as needed
+✅ **Compliance**: GDPR deletion, data residency requirements easily met
+✅ **Customization**: Per-tenant schema modifications possible
+✅ **Simple Development**: Business analysts write clean code without tenant complexity
 ```
 
 ### 5. API Route Pattern
@@ -286,8 +354,9 @@ For modules that connect to external systems
 ### 2. Automated Integration
 - **Route Registration**: Automatically register module API routes
 - **Navigation Updates**: Add module navigation items to sidebar
-- **Permission Seeding**: Add module permissions to database
-- **Database Migration**: Apply module schema changes
+- **Permission Seeding**: Add module permissions to all tenant schemas
+- **Database Migration**: Apply module schema changes to all tenant schemas
+- **Tenant Provisioning**: Automatically create module tables in existing tenant schemas
 
 ### 3. Post-Merge Testing
 - **Integration Tests**: Verify module works with foundation
@@ -316,10 +385,12 @@ npm run check-conflicts <module1> <module2>
 
 ## Security Considerations
 
-1. **Tenant Isolation**: All module data is automatically tenant-scoped
+1. **Tenant Isolation**: Physical schema separation provides complete data isolation
 2. **Permission Integration**: Modules define their own permissions following foundation patterns
 3. **API Security**: All module endpoints inherit foundation authentication/authorization
 4. **Input Validation**: All modules use foundation validation patterns
+5. **Schema-Level Security**: PostgreSQL schema permissions prevent cross-tenant access
+6. **Connection Security**: Tenant database connections are automatically scoped to correct schema
 
 ## Benefits of This Design
 
@@ -341,10 +412,12 @@ npm run check-conflicts <module1> <module2>
 ## Implementation Timeline
 
 ### Phase 1: Foundation Enhancements (Week 1-2)
-- Refactor current code into foundation structure
+- Refactor current code into foundation structure with schema-per-tenant architecture
+- Implement tenant schema management system
+- Create tenant provisioning and database abstraction layer
 - Implement module registry system
 - Create module configuration interfaces
-- Set up automatic module discovery
+- Set up automatic module discovery and deployment to tenant schemas
 
 ### Phase 2: Module Templates (Week 3-4)
 - Create CRUD module template

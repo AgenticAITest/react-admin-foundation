@@ -8,28 +8,57 @@ This document outlines the complete step-by-step process for developing, testing
 
 ### 1. Tenant Separation Strategy
 
-**Decision: Use Row-Level Security with tenant_id**
+**Decision: Use Schema-Per-Tenant Architecture**
 
-**Why tenant_id approach:**
-- **Simpler for Business Analysts**: Only need to add `tenantId` to tables
-- **Easier Module Development**: One codebase works for all tenants  
-- **Shared Infrastructure**: Single database, easier backups and monitoring
-- **Module Compatibility**: Modules work consistently across all tenants
-- **Cross-tenant Analytics**: Possible when needed (with proper authorization)
+**Why schema-per-tenant approach:**
+- **True Data Isolation**: Physical separation prevents any cross-tenant data access
+- **Superior Performance**: Each tenant has dedicated tables and indexes (50-100 tenants scale efficiently)
+- **Easy Backup/Restore**: Simple per-tenant backup with `pg_dump --schema=tenant_name`
+- **Enterprise Compliance**: GDPR deletion, data residency requirements easily met
+- **Scalability**: Can move tenants to different databases as needed
+- **Simple Development**: Business analysts write clean code without tenant complexity
 
-**Implementation Pattern:**
+**Database Architecture:**
+```
+Database: business_foundation
+├── public (shared foundation tables)
+│   ├── tenants                    # Tenant registry
+│   ├── global_users               # Cross-tenant user accounts  
+│   ├── system_modules             # Available modules
+│   └── system_configuration       # Global settings
+├── tenant_acme (tenant: acme.com)
+│   ├── users                      # Tenant-specific users
+│   ├── roles                      # Tenant-specific roles
+│   ├── permissions                # Tenant-specific permissions
+│   └── [all business module tables]
+├── tenant_widget_corp (tenant: widget-corp.com)
+│   └── [complete isolated copy of all tables]
+└── tenant_[other_tenants]
+```
+
+**Implementation Pattern for Business Analysts:**
 ```typescript
-// All business tables must include tenantId
+// Simple, clean table definitions - NO tenant_id needed!
 export const businessEntity = pgTable('business_entity', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-  tenantId: uuid('tenant_id')
-    .notNull()
-    .references(() => tenant.id),
+  // ... business fields only
+  name: varchar('name', { length: 255 }).notNull(),
+  description: varchar('description', { length: 500 }),
   // ... other fields
 }, (t) => [
-  // Tenant-scoped unique constraints
-  uniqueIndex("business_entity_unique_idx").on(t.tenantId, t.someField),
+  // Simple unique constraints
+  uniqueIndex("business_entity_name_idx").on(t.name),
 ]);
+```
+
+**Foundation Abstraction Layer:**
+```typescript
+// Business analysts use normal queries:
+const items = await req.db.select().from(businessEntity);
+
+// Behind the scenes, foundation routes to correct tenant schema:
+// SELECT * FROM tenant_acme.business_entity (for ACME tenant)
+// SELECT * FROM tenant_widget.business_entity (for Widget tenant)
 ```
 
 ### 2. Role Hierarchy System
@@ -202,10 +231,11 @@ src/modules/inventory/
 **AI Assistant Guidelines:**
 - Follow existing code patterns and conventions
 - Use foundation components and utilities
-- Implement proper tenant isolation
+- Write simple schemas without tenant complexity (foundation handles tenant isolation)
 - Add comprehensive error handling
 - Include input validation and security checks
 - Generate appropriate API documentation
+- Use `req.db` for all database operations (automatically tenant-scoped)
 
 #### 2.5 Module Testing Protocol
 ```bash
@@ -225,8 +255,9 @@ npm run test:performance inventory
 # - All CRUD operations work correctly
 # - Permission controls function properly
 # - UI components render correctly
-# - Data is properly tenant-scoped
+# - Data is completely isolated between tenants (schema-level isolation)
 # - Error handling works as expected
+# - Cross-tenant data access is impossible
 ```
 
 #### 2.6 Module Submission Process
@@ -274,18 +305,21 @@ npm run validate-module src/modules/inventory
 # 2. Conflict detection
 npm run check-conflicts inventory
 # Checks:
-# - No table name conflicts
+# - No table name conflicts across modules
 # - No API endpoint conflicts  
 # - No permission code conflicts
 # - No navigation path conflicts
+# - Schema deployment compatibility across all tenant schemas
 
 # 3. Security audit
 npm run test:security inventory
 # Verifies:
 # - All endpoints require authentication
 # - Proper authorization controls
-# - Tenant isolation implemented
+# - Schema-level tenant isolation implemented
 # - Input validation in place
+# - No cross-tenant data access possible
+# - Database connections properly scoped to tenant schemas
 ```
 
 #### 3.2 Staging Environment Testing
@@ -299,7 +333,9 @@ npm run deploy:staging
 # - Security controls testing
 # - Performance impact assessment
 # - Integration with existing modules
-# - Cross-tenant isolation verification
+# - Schema-level tenant isolation verification
+# - Module deployment across all tenant schemas
+# - Backup/restore procedures for individual tenants
 
 # 3. User acceptance testing
 # - Business analyst demonstrates functionality
@@ -320,10 +356,13 @@ npm run test:integration:all
 git checkout main  
 git merge develop
 
-# 4. Deploy to production
+# 4. Deploy to production (applies to all tenant schemas)
 npm run deploy:production
 
-# 5. Monitor deployment
+# 5. Verify deployment across all tenant schemas
+npm run verify:tenant-schemas
+
+# 6. Monitor deployment
 npm run logs:production
 npm run health:check
 ```
@@ -371,7 +410,7 @@ npm run health:check
 2. **Feature Access**
    - Users can access features based on assigned permissions
    - Module integrates seamlessly with existing workflow
-   - Data is automatically scoped to user's tenant
+   - Data is completely isolated to user's tenant schema (no cross-tenant access possible)
 
 ## Required Development Tools
 
@@ -395,19 +434,22 @@ npm run create-module <name> integration # External system integration
 ```bash
 npm run validate-module <module-name>    # Code and structure validation
 npm run check-conflicts <module-name>    # Conflict detection
-npm run test:security <module-name>      # Security audit
-npm run test:integration <module-name>   # Integration testing
-npm run test:performance <module-name>   # Performance testing
+npm run test:security <module-name>      # Security audit including schema isolation
+npm run test:integration <module-name>   # Integration testing across tenant schemas
+npm run test:performance <module-name>   # Performance testing with multiple tenant schemas
+npm run test:tenant-isolation <module-name> # Verify complete tenant data isolation
 ```
 
 ### 4. Administrative Interfaces
 
 #### Super Admin Dashboard Features:
-- **Module Management**: Install, activate, configure modules
-- **Tenant Management**: Create, manage, monitor tenants
-- **System Monitoring**: Performance, health, logs
-- **Security Management**: System-wide security settings
+- **Module Management**: Install, activate, configure modules across all tenant schemas
+- **Tenant Management**: Create, manage, monitor tenants (including schema provisioning)
+- **Schema Management**: Monitor tenant schema health, backup/restore individual tenants
+- **System Monitoring**: Performance, health, logs across all tenant schemas
+- **Security Management**: System-wide security settings and schema-level access controls
 - **Module Marketplace**: Browse and install available modules
+- **Tenant Migration**: Move tenants between database instances for scaling
 
 #### Tenant Admin Dashboard Features:
 - **User Management**: Add, edit, manage tenant users
@@ -431,8 +473,9 @@ npm run test:performance <module-name>   # Performance testing
 
 ### For End Users:
 ✅ **Consistent Experience**: All modules follow same UI and interaction patterns  
-✅ **Secure Access**: Robust permission and tenant isolation  
-✅ **Integrated Workflow**: Modules work seamlessly together  
+✅ **Secure Access**: Physical schema-level tenant isolation (impossible to access other tenant data)
+✅ **High Performance**: Dedicated tenant schemas optimize query performance
+✅ **Integrated Workflow**: Modules work seamlessly together within tenant  
 ✅ **Reliable Performance**: Tested and validated before deployment  
 
 ## Success Metrics
@@ -448,8 +491,10 @@ npm run test:performance <module-name>   # Performance testing
 - User satisfaction scores
 
 ### System Health:
-- Performance impact of new modules
-- System availability and reliability
-- Resource utilization efficiency
+- Performance impact of new modules across tenant schemas
+- System availability and reliability per tenant
+- Resource utilization efficiency across tenant schemas
+- Tenant schema backup and recovery success rates
+- Cross-tenant performance isolation effectiveness
 
 This workflow creates a sustainable "module marketplace" ecosystem where business knowledge can be quickly translated into functional software through AI assistance, while maintaining enterprise-grade quality and security standards.
