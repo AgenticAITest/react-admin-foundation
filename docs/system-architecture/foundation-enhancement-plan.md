@@ -786,6 +786,71 @@ export type ${entityName}Edit = z.infer<typeof ${entityNameCamel}EditSchema>;`
 };
 ```
 
+## Phase 2 Integration Gaps - Technical Debt
+
+The following integration issues were identified during Phase 2.2 implementation and must be resolved to make the module generation system fully functional:
+
+### Critical Integration Gaps (Must be resolved in Phase 2 completion)
+
+#### 2.3.1 Permission System Integration **[CRITICAL]**
+**Problem**: Generated modules create new permissions (e.g., `inventory.items.view`, `inventory.items.add`) but these are not automatically integrated into the system.
+
+**Impact**: Generated modules fail authorization checks because permissions don't exist in the system.
+
+**Required Solution**: 
+- Extend module generator to automatically add new permissions to `src/server/lib/constants/permissions.ts`
+- Update database seeders to grant new permissions to appropriate roles (SYSADMIN, USER)
+- Ensure permission seeding runs automatically during module generation
+
+#### 2.3.2 API Route Mounting **[CRITICAL]**
+**Problem**: Generated routes expect to be accessible at specific paths (e.g., `/api/inventory/items`) but there's no guarantee the Module Registry mounts them correctly.
+
+**Impact**: Frontend API calls return 404 errors, breaking all module functionality.
+
+**Required Solution**:
+- Enhance Module Registry to automatically mount module routes at predictable paths
+- Ensure generated routes match frontend endpoint expectations
+- Add route validation and conflict detection
+
+#### 2.3.3 Database Schema Integration **[CRITICAL]** 
+**Problem**: Generated database schemas are not automatically integrated with the existing Drizzle ORM setup.
+
+**Impact**: TypeScript compilation fails due to missing table imports, and database tables don't exist at runtime.
+
+**Required Solution**:
+- Auto-generate or append to module-specific schema files in `src/server/lib/db/schema/`
+- Automatically run `npm run db:push --force` to create database tables
+- Ensure proper schema exports and imports resolve correctly
+
+#### 2.3.4 Navigation Permission Consistency **[HIGH]**
+**Problem**: Navigation menu items use different permission naming pattern than actual routes.
+
+**Impact**: Navigation items remain hidden even when users have proper permissions to access modules.
+
+**Required Solution**:
+- Align navigation permission patterns with route permission patterns
+- Ensure consistent use of `${module}.${entityPlural}.view` format throughout
+
+### Recommended Resolution Timeline
+
+These gaps should be addressed in **Phase 2.3: Integration Completion** before proceeding to Phase 3:
+
+**Week 1-2: Critical Infrastructure**
+- [ ] Implement automatic permission registration system
+- [ ] Enhance Module Registry with automatic route mounting
+- [ ] Create database schema integration pipeline
+
+**Week 3: Testing & Validation** 
+- [ ] Test complete module generation workflow end-to-end
+- [ ] Validate generated modules work without manual intervention
+- [ ] Document integration resolution for future modules
+
+**Success Criteria for Phase 2 Completion**:
+- Generate a new module and have it immediately functional without manual integration steps
+- All authorization checks pass for generated permissions
+- Frontend can successfully call generated API endpoints
+- Database tables exist and queries execute successfully
+
 ### Phase 3: Enhanced Role System
 
 #### 3.1 Super Admin System
