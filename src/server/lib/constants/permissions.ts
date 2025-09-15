@@ -42,3 +42,57 @@ export const SUPER_ADMIN_PERMISSIONS = [
 ] as const;
 
 export type SuperAdminPermission = typeof SUPER_ADMIN_PERMISSIONS[number];
+
+// Standard permissions that are manually defined (existing system permissions)
+export const STANDARD_PERMISSIONS = [
+  // System permissions for both tenants
+  'system.tenant.view',
+  'system.tenant.add',
+  'system.tenant.edit', 
+  'system.tenant.delete',
+  'system.user.view',
+  'system.user.add',
+  'system.user.edit',
+  'system.user.delete',
+  'system.user.reset_password',
+  'system.role.view',
+  'system.role.add', 
+  'system.role.edit',
+  'system.role.delete',
+  'system.permission.view',
+  'system.permission.add',
+  'system.permission.edit',
+  'system.permission.delete',
+  'system.option.view',
+  'system.option.add',
+  'system.option.edit',
+  'system.option.delete',
+] as const;
+
+export type StandardPermission = typeof STANDARD_PERMISSIONS[number];
+
+// Dynamic permission collector for module-generated permissions
+export class PermissionCollector {
+  private static modulePermissions: string[] = [];
+
+  static addModulePermissions(permissions: string[]) {
+    // Add only unique permissions
+    for (const permission of permissions) {
+      if (!this.modulePermissions.includes(permission)) {
+        this.modulePermissions.push(permission);
+      }
+    }
+  }
+
+  static getAllModulePermissions(): string[] {
+    return [...this.modulePermissions];
+  }
+
+  static getAllPermissions(): string[] {
+    return [...STANDARD_PERMISSIONS, ...this.modulePermissions];
+  }
+
+  static clear() {
+    this.modulePermissions = [];
+  }
+}
