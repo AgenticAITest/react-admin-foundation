@@ -3,7 +3,6 @@ import { tenant } from '../db/schema/system';
 import { eq } from 'drizzle-orm';
 import fs from 'fs/promises';
 import { tenantDbManager } from '../db/tenant-db';
-import { PermissionCollector } from '../constants/permissions';
 
 export interface ModuleConfig {
   id: string;
@@ -94,9 +93,6 @@ export class ModuleRegistry {
     // Check dependencies
     await this.validateDependencies(config);
     
-    // Register module permissions
-    await this.registerPermissions(config);
-    
     // Register API routes
     await this.registerRoutes(config);
     
@@ -150,13 +146,6 @@ export class ModuleRegistry {
       if (existingModule.apiRoutes.prefix === prefix) {
         throw new Error(`Route prefix ${prefix} conflicts with existing module: ${moduleId}`);
       }
-    }
-  }
-
-  async registerPermissions(config: ModuleConfig): Promise<void> {
-    if (config.permissions && config.permissions.length > 0) {
-      PermissionCollector.addModulePermissions(config.permissions);
-      console.log(`✅ Registered ${config.permissions.length} permissions for module ${config.id}`);
     }
   }
 

@@ -1,10 +1,9 @@
 import bcrypt from "bcryptjs";
 import { db } from ".";
 import { permission, role, rolePermission, tenant, user, userRole, userTenant } from "./schema/system";
-import { PermissionCollector, STANDARD_PERMISSIONS } from "../constants/permissions";
-import { ModuleRegistry } from "../modules/module-registry";
 
 async function seed() {
+
   console.log("Clearing table")
   await db.execute(`TRUNCATE TABLE "sys_user_tenant", "sys_user_role", "sys_role_permission", "sys_permission", "sys_role", "sys_user", "sys_option", "sys_tenant"  CASCADE`);
 
@@ -12,20 +11,8 @@ async function seed() {
   const sysTenantId = crypto.randomUUID();
   const pubTenantId = crypto.randomUUID();
   await db.insert(tenant).values([
-    { 
-      id: sysTenantId, 
-      code: "SYSTEM", 
-      name: "System", 
-      description: "System Tenant",
-      schemaName: "system_tenant"
-    },
-    { 
-      id: pubTenantId, 
-      code: "PUBLIC", 
-      name: "Public", 
-      description: "Public Tenant",
-      schemaName: "public_tenant"
-    }
+    { id: sysTenantId, code: "SYSTEM", name: "System", description: "System Tenant" },
+    { id: pubTenantId, code: "PUBLIC", name: "Public", description: "Public Tenant" }
   ]);
 
   console.log("Seeding user");
@@ -57,107 +44,72 @@ async function seed() {
     { userId: userId, roleId: pubRoleId, tenantId: pubTenantId }
   ]);
 
-  // Discovery modules and collect their permissions
-  console.log("Discovering modules and collecting permissions");
-  const moduleRegistry = ModuleRegistry.getInstance();
-  await moduleRegistry.discoverModules();
-  
-  console.log("Seeding permissions");
-  await seedAllPermissions(sysTenantId, pubTenantId);
+  console.log("Seeding permission");
+  await db.insert(permission).values([
 
-  // Assign permissions to roles
-  console.log("Assigning permissions to roles");
-  await assignPermissionsToRoles(sysTenantId, pubTenantId);
-}
+    // system tenant permission
+    { id: crypto.randomUUID(), code: "system.tenant.view", name: "View Tenant", description: "Permission to view tenant", tenantId: sysTenantId },
+    { id: crypto.randomUUID(), code: "system.tenant.add", name: "Create Tenant", description: "Permission to add tenant", tenantId: sysTenantId },
+    { id: crypto.randomUUID(), code: "system.tenant.edit", name: "Edit Tenant", description: "Permission to edit tenant", tenantId: sysTenantId },
+    { id: crypto.randomUUID(), code: "system.tenant.delete", name: "Delete Tenant", description: "Permission to delete tenant", tenantId: sysTenantId },
 
-// Helper function to seed all permissions (standard + module permissions)
-async function seedAllPermissions(sysTenantId: string, pubTenantId: string) {
-  const allPermissions = PermissionCollector.getAllPermissions();
-  const permissionsToInsert = [];
+    { id: crypto.randomUUID(), code: "system.user.view", name: "View User", description: "Permission to view user", tenantId: sysTenantId },
+    { id: crypto.randomUUID(), code: "system.user.add", name: "Create User", description: "Permission to add user", tenantId: sysTenantId },
+    { id: crypto.randomUUID(), code: "system.user.edit", name: "Edit User", description: "Permission to edit user", tenantId: sysTenantId },
+    { id: crypto.randomUUID(), code: "system.user.delete", name: "Delete User", description: "Permission to delete user", tenantId: sysTenantId },
+    { id: crypto.randomUUID(), code: "system.user.reset_password", name: "Reset Password", description: "Permission to reset password user", tenantId: sysTenantId },
 
-  // Create permissions for both tenants
-  for (const permissionCode of allPermissions) {
-    // Generate a friendly name and description from the permission code
-    const name = permissionCode
-      .split('.')
-      .map(part => part.charAt(0).toUpperCase() + part.slice(1))
-      .join(' ');
+    { id: crypto.randomUUID(), code: "system.role.view", name: "View Role", description: "Permission to view role", tenantId: sysTenantId },
+    { id: crypto.randomUUID(), code: "system.role.add", name: "Create Role", description: "Permission to add role", tenantId: sysTenantId },
+    { id: crypto.randomUUID(), code: "system.role.edit", name: "Edit Role", description: "Permission to edit role", tenantId: sysTenantId },
+    { id: crypto.randomUUID(), code: "system.role.delete", name: "Delete Role", description: "Permission to delete role", tenantId: sysTenantId },
+
+    { id: crypto.randomUUID(), code: "system.permission.view", name: "View Permission", description: "Permission to view permission", tenantId: sysTenantId },
+    { id: crypto.randomUUID(), code: "system.permission.add", name: "Create Permission", description: "Permission to add permission", tenantId: sysTenantId },
+    { id: crypto.randomUUID(), code: "system.permission.edit", name: "Edit Permission", description: "Permission to edit permission", tenantId: sysTenantId },
+    { id: crypto.randomUUID(), code: "system.permission.delete", name: "Delete Permission", description: "Permission to delete permission", tenantId: sysTenantId },  
+
+    { id: crypto.randomUUID(), code: "system.option.view", name: "View Option", description: "Permission to view option", tenantId: sysTenantId },
+    { id: crypto.randomUUID(), code: "system.option.add", name: "Create Option", description: "Permission to add option", tenantId: sysTenantId },
+    { id: crypto.randomUUID(), code: "system.option.edit", name: "Edit Option", description: "Permission to edit option", tenantId: sysTenantId },
+    { id: crypto.randomUUID(), code: "system.option.delete", name: "Delete Option", description: "Permission to delete option", tenantId: sysTenantId },
+
     
-    const description = `Permission to ${permissionCode}`;
 
-    // Add for system tenant
-    permissionsToInsert.push({
-      id: crypto.randomUUID(),
-      code: permissionCode,
-      name: name,
-      description: description,
-      tenantId: sysTenantId
-    });
+    // public tenant permissions
+    { id: crypto.randomUUID(), code: "system.tenant.view", name: "View Tenant", description: "Permission to view tenant", tenantId: pubTenantId },
+    { id: crypto.randomUUID(), code: "system.tenant.edit", name: "Edit Tenant", description: "Permission to edit tenant", tenantId: pubTenantId },
 
-    // Add for public tenant (exclude system-only permissions)
-    if (!permissionCode.startsWith('system.tenant.add') && !permissionCode.startsWith('system.tenant.delete')) {
-      permissionsToInsert.push({
-        id: crypto.randomUUID(),
-        code: permissionCode,
-        name: name,
-        description: description,
-        tenantId: pubTenantId
-      });
-    }
-  }
+    { id: crypto.randomUUID(), code: "system.user.view", name: "View User", description: "Permission to view user", tenantId: pubTenantId },
+    { id: crypto.randomUUID(), code: "system.user.add", name: "Create User", description: "Permission to add user", tenantId: pubTenantId },
+    { id: crypto.randomUUID(), code: "system.user.edit", name: "Edit User", description: "Permission to edit user", tenantId: pubTenantId },
+    { id: crypto.randomUUID(), code: "system.user.delete", name: "Delete User", description: "Permission to delete user", tenantId: pubTenantId },
+    { id: crypto.randomUUID(), code: "system.user.reset_password", name: "Reset Password", description: "Permission to reset password user", tenantId: pubTenantId },
 
-  if (permissionsToInsert.length > 0) {
-    await db.insert(permission).values(permissionsToInsert);
-    console.log(`✅ Seeded ${permissionsToInsert.length} permissions (${allPermissions.length} unique permissions for 2 tenants)`);
-  }
-}
+    { id: crypto.randomUUID(), code: "system.role.view", name: "View Role", description: "Permission to view role", tenantId: pubTenantId },
+    { id: crypto.randomUUID(), code: "system.role.add", name: "Create Role", description: "Permission to add role", tenantId: pubTenantId },
+    { id: crypto.randomUUID(), code: "system.role.edit", name: "Edit Role", description: "Permission to edit role", tenantId: pubTenantId },
+    { id: crypto.randomUUID(), code: "system.role.delete", name: "Delete Role", description: "Permission to delete role", tenantId: pubTenantId },
 
-// Helper function to assign permissions to roles
-async function assignPermissionsToRoles(sysTenantId: string, pubTenantId: string) {
-  try {
-    // Get all roles for both tenants
-    const roles = await db.select().from(role);
-    const permissions = await db.select().from(permission);
+    { id: crypto.randomUUID(), code: "system.permission.view", name: "View Permission", description: "Permission to view permission", tenantId: pubTenantId },
+    { id: crypto.randomUUID(), code: "system.permission.add", name: "Create Permission", description: "Permission to add permission", tenantId: pubTenantId },
+    { id: crypto.randomUUID(), code: "system.permission.edit", name: "Edit Permission", description: "Permission to edit permission", tenantId: pubTenantId },
+    { id: crypto.randomUUID(), code: "system.permission.delete", name: "Delete Permission", description: "Permission to delete permission", tenantId: pubTenantId },  
 
-    const rolePermissionsToInsert = [];
+    { id: crypto.randomUUID(), code: "system.option.view", name: "View Option", description: "Permission to view option", tenantId: pubTenantId },
+    { id: crypto.randomUUID(), code: "system.option.add", name: "Create Option", description: "Permission to add option", tenantId: pubTenantId },
+    { id: crypto.randomUUID(), code: "system.option.edit", name: "Edit Option", description: "Permission to edit option", tenantId: pubTenantId },
+    { id: crypto.randomUUID(), code: "system.option.delete", name: "Delete Option", description: "Permission to delete option", tenantId: pubTenantId },
 
-    for (const roleRecord of roles) {
-      // SYSADMIN gets all permissions in their tenant
-      if (roleRecord.code === 'SYSADMIN') {
-        const tenantPermissions = permissions.filter(p => p.tenantId === roleRecord.tenantId);
-        for (const perm of tenantPermissions) {
-          rolePermissionsToInsert.push({
-            roleId: roleRecord.id,
-            permissionId: perm.id,
-            tenantId: roleRecord.tenantId
-          });
-        }
-      }
-      
-      // USER gets module permissions (non-system permissions) in their tenant
-      if (roleRecord.code === 'USER') {
-        const modulePermissions = permissions.filter(p => 
-          p.tenantId === roleRecord.tenantId && 
-          !p.code.startsWith('system.') // Exclude system permissions for regular users
-        );
-        for (const perm of modulePermissions) {
-          rolePermissionsToInsert.push({
-            roleId: roleRecord.id,
-            permissionId: perm.id,
-            tenantId: roleRecord.tenantId
-          });
-        }
-      }
-    }
 
-    if (rolePermissionsToInsert.length > 0) {
-      await db.insert(rolePermission).values(rolePermissionsToInsert);
-      console.log(`✅ Assigned ${rolePermissionsToInsert.length} role-permission relationships`);
-    }
-  } catch (error) {
-    console.error('❌ Failed to assign permissions to roles:', error);
-    throw error;
-  }
+  ]);
+
+  // console.log("Seeding role permission");
+  // await db.insert(rolePermission).values([
+  //   { roleId: sysRoleId, permissionId: sysPermissionId, tenantId: sysTenantId },
+  //   { roleId: pubRoleId, permissionId: pubPermissionId, tenantId: pubTenantId }
+  // ]);
+
 }
 
 async function main() {
