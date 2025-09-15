@@ -4,6 +4,23 @@ import jwt from 'jsonwebtoken'; // You'll need to install jsonwebtoken: npm inst
 import { db } from '../lib/db';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { permission, role, rolePermission, user, userRole } from '../lib/db/schema/system';
+import { tenantDbManager } from '../lib/db/tenant-db';
+import { drizzle } from 'drizzle-orm/postgres-js';
+
+// Extend existing Request interface
+declare global {
+  namespace Express {
+    interface Request {
+      user?: {
+        username: string;
+        activeTenantId: string;
+        userId: string;
+        isSuperAdmin?: boolean;
+      };
+      db?: ReturnType<typeof drizzle>; // Tenant-scoped database connection
+    }
+  }
+}
 
 export interface DecodedToken {
   username: string;
@@ -37,7 +54,23 @@ export const authenticated = () => async (req: Request, res: Response, next: Nex
     if (!currentUser) {
       return res.status(401).json({ message: 'Unauthorized.' });
     }
-    req.user = { username: currentUser.username, activeTenantId: currentUser.activeTenantId }; // Attach decoded user information to the request
+
+    // Enhanced user context
+    req.user = { 
+      username: currentUser.username, 
+      activeTenantId: currentUser.activeTenantId,
+      userId: currentUser.id,
+      isSuperAdmin: currentUser.isSuperAdmin || false
+    };
+    
+    // NEW: Automatically set tenant-scoped database connection
+    if (!currentUser.isSuperAdmin) {
+      req.db = await tenantDbManager.getTenantDb(currentUser.activeTenantId);
+    } else {
+      // Super admins get global database access
+      req.db = db;
+    }
+    
     next();
   } catch (error) {
     if (error instanceof jwt.TokenExpiredError) {
@@ -76,6 +109,14 @@ export const authorized = (
       return res.status(500).json({ message: 'Internal server error.' });
     }
   };
+
+// New super admin middleware
+export const superAdminOnly = () => async (req: Request, res: Response, next: NextFunction) => {
+  if (!req.user?.isSuperAdmin) {
+    return res.status(403).json({ message: 'Super admin access required.' });
+  }
+  next();
+};
 
 export const hasRoles = (roles: string | string[]) => async (req: Request, res: Response, next: NextFunction) => {
   if (!req.user) {
