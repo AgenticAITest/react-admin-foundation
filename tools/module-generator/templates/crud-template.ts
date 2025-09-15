@@ -15,6 +15,13 @@ export const generateCrudModule = (options: TemplateOptions) => {
   const entityNameCamel = entityName.charAt(0).toLowerCase() + entityName.slice(1);
   const entityNamePlural = `${entityNameLower}s`;
 
+  const modulePermissions = [
+    `${moduleName}.${entityNamePlural}.view`,
+    `${moduleName}.${entityNamePlural}.add`, 
+    `${moduleName}.${entityNamePlural}.edit`,
+    `${moduleName}.${entityNamePlural}.delete`
+  ];
+
   return {
     // Module configuration
     config: `
@@ -55,7 +62,7 @@ export const ${entityNameCamel}Module = {
         path: "/console/${moduleName}/${entityNamePlural}", 
         label: "${entityName}s", 
         icon: "Package",
-        permissions: ["${moduleName}.view"]
+        permissions: ["${moduleName}.${entityNamePlural}.view"]
       }
     ]
   },
@@ -421,6 +428,40 @@ export const ${entityNameCamel}EditSchema = ${entityNameCamel}Schema.extend({
 });
 
 export type ${entityName} = z.infer<typeof ${entityNameCamel}Schema>;
-export type ${entityName}Edit = z.infer<typeof ${entityNameCamel}EditSchema>;`
+export type ${entityName}Edit = z.infer<typeof ${entityNameCamel}EditSchema>;`,
+
+    // Automatic permission integration metadata
+    metadata: {
+      moduleId: moduleName,
+      permissions: modulePermissions,
+      requiresPermissionIntegration: true
+    }
   };
+};
+
+/**
+ * Generate a CRUD module with automatic permission integration
+ */
+export const generateCrudModuleWithIntegration = async (options: TemplateOptions) => {
+  // Import permission integrator
+  const { PermissionIntegrator } = await import('../lib/permission-integrator');
+  
+  const moduleConfig = generateCrudModule(options);
+  
+  // Automatically integrate permissions into the system
+  if (moduleConfig.metadata.requiresPermissionIntegration) {
+    try {
+      await PermissionIntegrator.integrateModule(
+        moduleConfig.metadata.moduleId,
+        moduleConfig.metadata.permissions
+      );
+      
+      console.log(`✅ Module '${moduleConfig.metadata.moduleId}' generated with integrated permissions`);
+    } catch (error) {
+      console.error(`❌ Failed to integrate permissions for module '${moduleConfig.metadata.moduleId}':`, error);
+      console.log('ℹ️  You may need to manually run permission integration later');
+    }
+  }
+  
+  return moduleConfig;
 };

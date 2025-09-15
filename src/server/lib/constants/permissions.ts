@@ -42,3 +42,27 @@ export const SUPER_ADMIN_PERMISSIONS = [
 ] as const;
 
 export type SuperAdminPermission = typeof SUPER_ADMIN_PERMISSIONS[number];
+
+// Module permissions registry - automatically populated by module generator
+export const MODULE_PERMISSIONS: Record<string, string[]> = {
+  // Existing master data permissions for compatibility
+  master: [
+    'master.products.view',
+    'master.products.manage',
+    'master.inventory-types.view', 
+    'master.inventory-types.manage',
+    'master.package-types.view',
+    'master.package-types.manage'
+  ]
+  // Generated module permissions will be added here automatically
+};
+
+// Get all module permissions as flat array
+export const getAllModulePermissions = (): string[] => {
+  return Object.values(MODULE_PERMISSIONS).flat();
+};
+
+// Register new module permissions (called by module generator)
+export const registerModulePermissions = (moduleId: string, permissions: string[]): void => {
+  MODULE_PERMISSIONS[moduleId] = permissions;
+};

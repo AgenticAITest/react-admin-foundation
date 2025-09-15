@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import { db } from ".";
 import { permission, role, rolePermission, tenant, user, userRole, userTenant } from "./schema/system";
+import { getAllModulePermissions } from "../constants/permissions";
 
 async function seed() {
 
@@ -11,8 +12,22 @@ async function seed() {
   const sysTenantId = crypto.randomUUID();
   const pubTenantId = crypto.randomUUID();
   await db.insert(tenant).values([
-    { id: sysTenantId, code: "SYSTEM", name: "System", description: "System Tenant" },
-    { id: pubTenantId, code: "PUBLIC", name: "Public", description: "Public Tenant" }
+    { 
+      id: sysTenantId, 
+      code: "SYSTEM", 
+      name: "System", 
+      description: "System Tenant",
+      schemaName: "system_tenant",
+      status: "active"
+    },
+    { 
+      id: pubTenantId, 
+      code: "PUBLIC", 
+      name: "Public", 
+      description: "Public Tenant",
+      schemaName: "public_tenant", 
+      status: "active"
+    }
   ]);
 
   console.log("Seeding user");
@@ -101,8 +116,12 @@ async function seed() {
     { id: crypto.randomUUID(), code: "system.option.edit", name: "Edit Option", description: "Permission to edit option", tenantId: pubTenantId },
     { id: crypto.randomUUID(), code: "system.option.delete", name: "Delete Option", description: "Permission to delete option", tenantId: pubTenantId },
 
-
+    // Module permissions - automatically added by generators
+    ...generateModulePermissionSeeds(sysTenantId, pubTenantId)
   ]);
+
+  // Seed role-permission mappings
+  await seedRolePermissions(sysTenantId, pubTenantId);
 
   // console.log("Seeding role permission");
   // await db.insert(rolePermission).values([
@@ -116,6 +135,73 @@ async function main() {
   await seed();
   console.log("Seed completed");
   process.exit(0);
+}
+
+// Helper function to generate permission seeds for modules
+function generateModulePermissionSeeds(sysTenantId: string, pubTenantId: string) {
+  const modulePermissions = getAllModulePermissions();
+  const seeds = [];
+  
+  for (const permissionCode of modulePermissions) {
+    const [module, entity, action] = permissionCode.split('.');
+    const name = `${action.charAt(0).toUpperCase() + action.slice(1)} ${entity.charAt(0).toUpperCase() + entity.slice(1)}`;
+    const description = `Permission to ${action} ${entity} in ${module} module`;
+    
+    // Add for both system and public tenants
+    seeds.push(
+      { id: crypto.randomUUID(), code: permissionCode, name, description, tenantId: sysTenantId },
+      { id: crypto.randomUUID(), code: permissionCode, name, description, tenantId: pubTenantId }
+    );
+  }
+  
+  return seeds;
+}
+
+// Helper function to seed role-permission mappings
+async function seedRolePermissions(sysTenantId: string, pubTenantId: string) {
+  console.log("Seeding role permissions");
+  
+  // Get all roles and permissions for mapping
+  const roles = await db.select().from(role);
+  const permissions = await db.select().from(permission);
+  
+  const sysAdminRoles = roles.filter(r => r.code === 'SYSADMIN');
+  const userRoles = roles.filter(r => r.code === 'USER');
+  
+  const mappings = [];
+  
+  // Grant all permissions to SYSADMIN roles
+  for (const adminRole of sysAdminRoles) {
+    const tenantPermissions = permissions.filter(p => p.tenantId === adminRole.tenantId);
+    for (const perm of tenantPermissions) {
+      mappings.push({
+        roleId: adminRole.id,
+        permissionId: perm.id,
+        tenantId: adminRole.tenantId
+      });
+    }
+  }
+  
+  // Grant module permissions to USER roles (but not system admin permissions)
+  for (const userRole of userRoles) {
+    const modulePermissions = getAllModulePermissions();
+    const tenantPermissions = permissions.filter(p => 
+      p.tenantId === userRole.tenantId && 
+      modulePermissions.includes(p.code)
+    );
+    
+    for (const perm of tenantPermissions) {
+      mappings.push({
+        roleId: userRole.id,
+        permissionId: perm.id,
+        tenantId: userRole.tenantId
+      });
+    }
+  }
+  
+  if (mappings.length > 0) {
+    await db.insert(rolePermission).values(mappings);
+  }
 }
 
 main();
