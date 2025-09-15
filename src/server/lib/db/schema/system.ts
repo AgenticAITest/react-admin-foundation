@@ -1,11 +1,28 @@
 import { relations } from 'drizzle-orm';
-import { boolean, date, pgTable, primaryKey, time, timestamp, unique, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
+import { boolean, date, pgTable, primaryKey, time, timestamp, unique, uniqueIndex, uuid, varchar, integer, bigint } from 'drizzle-orm/pg-core';
 
 export const tenant = pgTable('sys_tenant', {
   id: uuid('id').primaryKey(),
   code: varchar('code', { length: 255 }).notNull().unique(),
   name: varchar('name', { length: 255 }).notNull(),
   description: varchar('description', { length: 255 }),
+  
+  // Schema-per-tenant management fields
+  schemaName: varchar('schema_name', { length: 255 }).notNull().unique(),
+  status: varchar('status', { 
+    length: 50, 
+    enum: ["active", "inactive", "suspended", "provisioning"] 
+  }).default("active").notNull(),
+  databaseUrl: varchar('database_url', { length: 500 }), // For future multi-DB support
+  
+  // Resource limits
+  maxUsers: integer('max_users').default(100),
+  maxStorage: bigint('max_storage', { mode: 'number' }).default(1000000), // bytes
+  
+  // Feature flags and configuration (using jsonb for better querying)
+  enabledModules: varchar('enabled_modules', { length: 1000 }), // JSON array of module IDs  
+  customSettings: varchar('custom_settings', { length: 2000 }), // JSON object
+  
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull().$onUpdate(() => new Date()),
 });
@@ -21,6 +38,11 @@ export const user = pgTable('sys_user', {
   activeTenantId: uuid('tenant_id')
     .notNull()
     .references(() => tenant.id),
+  
+  // Super admin capabilities
+  isSuperAdmin: boolean('is_super_admin').default(false),
+  globalPermissions: varchar('global_permissions', { length: 1000 }), // JSON array
+  
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull().$onUpdate(() => new Date()),
 });
