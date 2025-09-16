@@ -5,6 +5,8 @@
  */
 
 import { generateCrudModuleWithIntegration } from './templates/crud-template';
+import { promises as fs } from 'fs';
+import path from 'path';
 
 async function main() {
   const args = process.argv.slice(2);
@@ -29,15 +31,53 @@ async function main() {
       ]
     });
     
-    // TODO: Write generated files to disk
-    console.log('📁 Generated files:');
-    console.log('   - Module config');
-    console.log('   - Database schema');
-    console.log('   - API routes');
-    console.log('   - React components');
-    console.log('   - Validation schemas');
+    // Create module directory structure
+    const moduleDir = path.join('src', 'modules', moduleName);
+    const entityNameLower = entityName.toLowerCase();
+    const entityNameCamel = entityName.charAt(0).toLowerCase() + entityName.slice(1);
+    
+    console.log(`📁 Creating module directory: ${moduleDir}`);
+    
+    // Create all necessary directories
+    await fs.mkdir(path.join(moduleDir, 'server', 'routes'), { recursive: true });
+    await fs.mkdir(path.join(moduleDir, 'server', 'schemas'), { recursive: true });
+    await fs.mkdir(path.join(moduleDir, 'client', 'pages'), { recursive: true });
+    await fs.mkdir(path.join(moduleDir, 'client', 'components'), { recursive: true });
+    
+    // Write all generated files to disk
+    const filesToWrite = [
+      {
+        path: path.join(moduleDir, 'module.config.ts'),
+        content: moduleConfig.config,
+        description: 'Module configuration'
+      },
+      {
+        path: path.join(moduleDir, 'server', 'routes', `${entityNameCamel}Routes.ts`),
+        content: moduleConfig.routerFile,
+        description: 'API routes'
+      },
+      {
+        path: path.join(moduleDir, 'server', 'schemas', `${entityNameCamel}Schema.ts`),
+        content: moduleConfig.schemas,
+        description: 'Validation schemas'
+      },
+      {
+        path: path.join(moduleDir, 'client', 'pages', `${entityName}sPage.tsx`),
+        content: moduleConfig.component,
+        description: 'React component'
+      }
+    ];
+    
+    console.log('📁 Writing generated files:');
+    for (const file of filesToWrite) {
+      await fs.writeFile(file.path, file.content, 'utf8');
+      console.log(`   ✅ ${file.description}: ${file.path}`);
+    }
     
     console.log(`\n✅ Module '${moduleName}' generated successfully with integrated permissions!`);
+    console.log(`📂 Module files created in: ${moduleDir}`);
+    console.log(`🔄 Permissions and database schema have been automatically integrated`);
+    console.log(`🚀 Module is ready to use!`);
     
   } catch (error) {
     console.error('❌ Module generation failed:', error);
