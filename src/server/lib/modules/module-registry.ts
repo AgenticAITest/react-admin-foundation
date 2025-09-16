@@ -285,6 +285,39 @@ export class ModuleRegistry {
   }
 
   /**
+   * Discover and register a single module by ID
+   */
+  async discoverModule(moduleId: string): Promise<void> {
+    try {
+      const modulesDir = this.getModulesDirectory();
+      const configPath = this.resolveModuleConfigPath(modulesDir, moduleId);
+      
+      if (await fs.access(configPath).then(() => true).catch(() => false)) {
+        // Clear require cache first for hotswap scenarios
+        const resolvedPath = path.resolve(configPath);
+        delete require.cache[resolvedPath];
+        
+        const { default: config } = await import(resolvedPath);
+        
+        // For hotswap, we need to allow re-registration of existing modules
+        // Temporarily remove from registry if it exists
+        const wasRegistered = this.modules.has(moduleId);
+        if (wasRegistered) {
+          this.modules.delete(moduleId);
+        }
+        
+        await this.registerModule(config);
+        console.log(`✅ Discovered and registered module: ${config.name}`);
+      } else {
+        throw new Error(`Module configuration not found: ${configPath}`);
+      }
+    } catch (error) {
+      console.error(`❌ Failed to discover module ${moduleId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
    * Unregister a module and unmount its routes
    */
   async unregisterModule(moduleId: string): Promise<void> {
