@@ -1036,129 +1036,268 @@ export default SuperAdminDashboard;
 
 ### Phase 4: Development Tools
 
-#### 4.1 Module Generator CLI
+#### ~~4.1 Module Generator CLI~~ *(DEPRECATED - Replaced by improved implementation)*
+
+~~Module Generator CLI approach replaced by superior implementation that provides better integration and business analyst workflow.~~
+
+#### 4.1 Runtime Module Hotswap System
 
 ```typescript
-// tools/module-generator/cli.ts
-import { Command } from 'commander';
-import { generateCrudModule } from './templates/crud-template';
-import { generateWorkflowModule } from './templates/workflow-template';
-import { generateReportingModule } from './templates/reporting-template';
-import { moduleRegistry } from '../foundation/server/lib/modules/module-registry';
+// src/server/lib/modules/hotswap-manager.ts
+import { ModuleRegistry } from './module-registry';
+import { RouteRegistry } from './route-registry';
+import { tenantDbManager } from '../db/tenant-db';
 
-const program = new Command();
+export class ModuleHotswapManager {
+  private static instance: ModuleHotswapManager;
+  private moduleRegistry: ModuleRegistry;
+  private routeRegistry: RouteRegistry;
 
-interface ModuleTemplates {
-  [key: string]: (options: any) => any;
-}
+  constructor() {
+    this.moduleRegistry = ModuleRegistry.getInstance();
+    this.routeRegistry = RouteRegistry.getInstance();
+  }
 
-const templates: ModuleTemplates = {
-  crud: generateCrudModule,
-  workflow: generateWorkflowModule,
-  reporting: generateReportingModule,
-};
+  static getInstance(): ModuleHotswapManager {
+    if (!ModuleHotswapManager.instance) {
+      ModuleHotswapManager.instance = new ModuleHotswapManager();
+    }
+    return ModuleHotswapManager.instance;
+  }
 
-program
-  .name('create-module')
-  .description('Generate business modules for the foundation')
-  .version('1.0.0');
-
-program
-  .command('generate')
-  .description('Generate a new module from template')
-  .argument('<name>', 'Module name')
-  .argument('<template>', 'Template type (crud, workflow, reporting)')
-  .option('-e, --entity <entity>', 'Entity name for CRUD modules')
-  .option('-f, --fields <fields>', 'Comma-separated field definitions for CRUD')
-  .action(async (name: string, template: string, options: any) => {
+  /**
+   * Hotswap a module without server restart
+   */
+  async hotswapModule(moduleId: string): Promise<void> {
     try {
-      if (!templates[template]) {
-        console.error(`❌ Unknown template: ${template}`);
-        console.log(`Available templates: ${Object.keys(templates).join(', ')}`);
-        process.exit(1);
+      console.log(`🔄 Hotswapping module: ${moduleId}`);
+      
+      // 1. Unmount existing routes
+      await this.routeRegistry.unmountModuleRoutes(moduleId);
+      
+      // 2. Clear module from registry
+      this.moduleRegistry.unregisterModule(moduleId);
+      
+      // 3. Clear require cache for module files
+      this.clearModuleCache(moduleId);
+      
+      // 4. Re-discover and register the module
+      await this.moduleRegistry.discoverModule(moduleId);
+      
+      // 5. Re-mount routes
+      const moduleConfig = this.moduleRegistry.getModule(moduleId);
+      if (moduleConfig) {
+        await this.routeRegistry.mountModuleRoutes(moduleConfig);
       }
-
-      console.log(`🚀 Generating ${template} module: ${name}`);
       
-      // Parse fields if provided
-      let fields = [];
-      if (options.fields) {
-        fields = options.fields.split(',').map((field: string) => {
-          const [fieldName, fieldType = 'string', ...flags] = field.trim().split(':');
-          return {
-            name: fieldName,
-            type: fieldType,
-            required: flags.includes('required'),
-            unique: flags.includes('unique')
-          };
-        });
-      }
-
-      const templateOptions = {
-        moduleName: name,
-        entityName: options.entity || name,
-        fields
-      };
-
-      // Generate module code
-      const moduleCode = templates[template](templateOptions);
+      // 6. Apply database schema changes to all tenants
+      await this.applySchemaChangesToAllTenants(moduleId);
       
-      // Create directory structure
-      const moduleDir = `src/modules/${name}`;
-      await fs.mkdir(moduleDir, { recursive: true });
-      await fs.mkdir(`${moduleDir}/server/routes`, { recursive: true });
-      await fs.mkdir(`${moduleDir}/server/schemas`, { recursive: true });
-      await fs.mkdir(`${moduleDir}/client/pages`, { recursive: true });
-      await fs.mkdir(`${moduleDir}/client/components`, { recursive: true });
-      await fs.mkdir(`${moduleDir}/database`, { recursive: true });
-      await fs.mkdir(`${moduleDir}/permissions`, { recursive: true });
-      
-      // Write module files
-      await Promise.all([
-        fs.writeFile(`${moduleDir}/module.config.ts`, moduleCode.config),
-        fs.writeFile(`${moduleDir}/database/schema.ts`, moduleCode.schema),
-        fs.writeFile(`${moduleDir}/server/routes/${name}.ts`, moduleCode.routes),
-        fs.writeFile(`${moduleDir}/server/schemas/${name}Schema.ts`, moduleCode.schemas),
-        fs.writeFile(`${moduleDir}/client/pages/${name}Page.tsx`, moduleCode.component),
-        fs.writeFile(`${moduleDir}/README.md`, `# ${name} Module\n\nGenerated on ${new Date().toISOString()}\n`),
-      ]);
-      
-      // Auto-register module
-      await moduleRegistry.discoverModules();
-      
-      console.log(`✅ Module ${name} created successfully!`);
-      console.log(`📁 Location: ${moduleDir}`);
-      console.log(`🔧 Next steps:`);
-      console.log(`   1. Review generated files`);
-      console.log(`   2. Customize business logic`);
-      console.log(`   3. Test the module`);
-      console.log(`   4. Deploy to staging`);
+      console.log(`✅ Module ${moduleId} hotswapped successfully`);
       
     } catch (error) {
-      console.error(`❌ Failed to generate module:`, error);
-      process.exit(1);
+      console.error(`❌ Failed to hotswap module ${moduleId}:`, error);
+      throw error;
     }
-  });
+  }
 
-program
-  .command('validate')
-  .description('Validate a module')
-  .argument('<name>', 'Module name to validate')
-  .action(async (name: string) => {
-    const modulePath = `src/modules/${name}`;
-    const results = await validateModule(modulePath);
+  /**
+   * Import and deploy a new module package
+   */
+  async importModule(modulePackage: ModulePackage): Promise<void> {
+    try {
+      console.log(`📦 Importing module package: ${modulePackage.id}`);
+      
+      // 1. Validate module package
+      await this.validateModulePackage(modulePackage);
+      
+      // 2. Extract module files to modules directory
+      await this.extractModuleFiles(modulePackage);
+      
+      // 3. Register and mount the new module
+      await this.hotswapModule(modulePackage.id);
+      
+      console.log(`✅ Module ${modulePackage.id} imported and deployed`);
+      
+    } catch (error) {
+      console.error(`❌ Failed to import module:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Export a module as a package for sharing
+   */
+  async exportModule(moduleId: string): Promise<ModulePackage> {
+    try {
+      const moduleConfig = this.moduleRegistry.getModule(moduleId);
+      if (!moduleConfig) {
+        throw new Error(`Module ${moduleId} not found`);
+      }
+
+      // Package all module files
+      const moduleFiles = await this.collectModuleFiles(moduleId);
+      
+      const modulePackage: ModulePackage = {
+        id: moduleId,
+        config: moduleConfig,
+        files: moduleFiles,
+        exportedAt: new Date(),
+        version: moduleConfig.version
+      };
+
+      console.log(`📤 Exported module ${moduleId} as package`);
+      return modulePackage;
+      
+    } catch (error) {
+      console.error(`❌ Failed to export module:`, error);
+      throw error;
+    }
+  }
+
+  private clearModuleCache(moduleId: string): void {
+    const moduleBasePath = path.resolve(`src/modules/${moduleId}`);
     
-    if (results.length === 0) {
-      console.log(`✅ Module ${name} is valid`);
-    } else {
-      console.log(`❌ Module ${name} has issues:`);
-      results.forEach(result => {
-        console.log(`  ${result.type}: ${result.message}`);
-      });
-    }
-  });
+    // Clear all cached files for this module
+    Object.keys(require.cache).forEach(cacheKey => {
+      if (cacheKey.startsWith(moduleBasePath)) {
+        delete require.cache[cacheKey];
+      }
+    });
+  }
 
-export { program };
+  private async applySchemaChangesToAllTenants(moduleId: string): Promise<void> {
+    const activeTenantsQuery = await db.select().from(tenant).where(eq(tenant.status, 'active'));
+    
+    for (const tenantRecord of activeTenantsQuery) {
+      try {
+        await tenantDbManager.deployModuleToTenant(moduleId, tenantRecord.id);
+        console.log(`✅ Applied schema changes for module ${moduleId} to tenant ${tenantRecord.code}`);
+      } catch (error) {
+        console.error(`❌ Failed to apply schema changes to tenant ${tenantRecord.code}:`, error);
+      }
+    }
+  }
+
+  private async validateModulePackage(modulePackage: ModulePackage): Promise<void> {
+    // Validate package structure
+    if (!modulePackage.id || !modulePackage.config || !modulePackage.files) {
+      throw new Error('Invalid module package structure');
+    }
+
+    // Check for conflicts with existing modules
+    const existingModule = this.moduleRegistry.getModule(modulePackage.id);
+    if (existingModule) {
+      console.log(`ℹ️ Module ${modulePackage.id} already exists, will be replaced`);
+    }
+
+    // Validate module configuration
+    await this.moduleRegistry.validateModule(modulePackage.config);
+  }
+
+  private async extractModuleFiles(modulePackage: ModulePackage): Promise<void> {
+    const moduleDir = `src/modules/${modulePackage.id}`;
+    
+    // Create module directory structure
+    await fs.mkdir(moduleDir, { recursive: true });
+    
+    // Write all module files
+    for (const [filePath, content] of Object.entries(modulePackage.files)) {
+      const fullPath = path.join(moduleDir, filePath);
+      await fs.mkdir(path.dirname(fullPath), { recursive: true });
+      await fs.writeFile(fullPath, content, 'utf8');
+    }
+  }
+
+  private async collectModuleFiles(moduleId: string): Promise<Record<string, string>> {
+    const moduleDir = `src/modules/${moduleId}`;
+    const files: Record<string, string> = {};
+    
+    const collectFilesRecursively = async (dir: string, basePath: string = '') => {
+      const items = await fs.readdir(dir, { withFileTypes: true });
+      
+      for (const item of items) {
+        const itemPath = path.join(dir, item.name);
+        const relativePath = basePath ? `${basePath}/${item.name}` : item.name;
+        
+        if (item.isDirectory()) {
+          await collectFilesRecursively(itemPath, relativePath);
+        } else {
+          const content = await fs.readFile(itemPath, 'utf8');
+          files[relativePath] = content;
+        }
+      }
+    };
+    
+    await collectFilesRecursively(moduleDir);
+    return files;
+  }
+}
+
+export interface ModulePackage {
+  id: string;
+  config: ModuleConfig;
+  files: Record<string, string>; // filepath -> content
+  exportedAt: Date;
+  version: string;
+}
+
+export const moduleHotswapManager = ModuleHotswapManager.getInstance();
+```
+
+**API Endpoints for Hotswap Management:**
+
+```typescript
+// src/server/routes/system/modules.ts
+import { Router } from 'express';
+import { authenticated, superAdminOnly } from '../../middleware/authMiddleware';
+import { moduleHotswapManager } from '../../lib/modules/hotswap-manager';
+
+const modulesRouter = Router();
+
+// All routes require super admin access
+modulesRouter.use(authenticated(), superAdminOnly());
+
+/**
+ * Hotswap a module without server restart
+ */
+modulesRouter.post('/hotswap/:moduleId', async (req, res) => {
+  try {
+    const { moduleId } = req.params;
+    await moduleHotswapManager.hotswapModule(moduleId);
+    res.json({ success: true, message: `Module ${moduleId} hotswapped successfully` });
+  } catch (error) {
+    res.status(500).json({ error: `Failed to hotswap module: ${error.message}` });
+  }
+});
+
+/**
+ * Import a module package
+ */
+modulesRouter.post('/import', async (req, res) => {
+  try {
+    const modulePackage = req.body;
+    await moduleHotswapManager.importModule(modulePackage);
+    res.json({ success: true, message: `Module ${modulePackage.id} imported successfully` });
+  } catch (error) {
+    res.status(500).json({ error: `Failed to import module: ${error.message}` });
+  }
+});
+
+/**
+ * Export a module as package
+ */
+modulesRouter.get('/export/:moduleId', async (req, res) => {
+  try {
+    const { moduleId } = req.params;
+    const modulePackage = await moduleHotswapManager.exportModule(moduleId);
+    res.json(modulePackage);
+  } catch (error) {
+    res.status(500).json({ error: `Failed to export module: ${error.message}` });
+  }
+});
+
+export default modulesRouter;
 ```
 
 #### 4.2 Validation and Testing Tools
