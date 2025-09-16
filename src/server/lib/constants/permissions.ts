@@ -76,6 +76,13 @@ export const MODULE_PERMISSIONS: Record<string, string[]> = {
     'inventory.product.edit',
     'inventory.product.delete'
   ]
+,
+  'tasks': [
+    'tasks.task management.view',
+    'tasks.task management.add',
+    'tasks.task management.edit',
+    'tasks.task management.delete'
+  ]
 };
 
 // Get all module permissions as flat array
