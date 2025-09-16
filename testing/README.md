@@ -1,6 +1,6 @@
 # Business Analyst Testing Framework
 
-This directory contains the Playwright MCP testing framework designed for business analysts to validate modules and business workflows.
+This directory contains the Replit native testing framework designed for business analysts to validate modules and business workflows using Replit Agent App Testing and unit testing capabilities.
 
 ## Quick Start
 
@@ -13,88 +13,103 @@ This directory contains the Playwright MCP testing framework designed for busine
 ### Run Specific Test Suites
 ```bash
 cd testing
-npx playwright test --config=playwright-mcp.config.ts car-dealership.spec.ts
-npx playwright test --config=playwright-mcp.config.ts module-hotswap.spec.ts
-npx playwright test --config=playwright-mcp.config.ts natural-language.spec.ts
+npm test car-dealership
+npm test module-hotswap
+npm test natural-language
 ```
+
+### Use Replit Agent App Testing
+1. Enable **App Testing** in the Agent Tools panel
+2. Ask Replit Agent to test your application workflows
+3. Review video replays of testing sessions for insights
 
 ## Business Analyst Workflow
 
-### 1. Natural Language Testing
-Business analysts can describe tests in plain English:
+### 1. AI-Powered App Testing
+Business analysts can request testing in natural language:
 
-```javascript
-// Example: "Create a new customer named John Doe with email john@example.com"
-const scenario = "Create a new customer named John Doe with email john@example.com";
-const parsed = NaturalLanguageInterpreter.parseAction(scenario);
-// Automatically converts to executable test actions
+```
+"Test the car dealership customer creation workflow"
+"Validate that inventory items can be added and searched"
+"Test the complete sales process from customer to final sale"
 ```
 
+Replit Agent will automatically:
+- Navigate your application like a real user
+- Test forms, buttons, and workflows
+- Identify and report issues
+- Provide video replays of testing sessions
+
 ### 2. Module Testing
-Test your modules with simple helpers:
+Test your modules with unit tests and API validation:
 
 ```javascript
-const helpers = new BusinessAnalystHelpers(page);
-
-// Login and navigate
-await helpers.loginAsSuperAdmin();
-await helpers.navigateToModule('Inventory');
-
-// Test CRUD operations
-await helpers.createRecord('Product', {
-  name: 'Toyota Camry',
-  price: '25000'
+// Unit test example
+test('should create customer', async () => {
+  const customer = await createCustomer({
+    name: 'John Doe',
+    email: 'john@example.com'
+  });
+  expect(customer.id).toBeDefined();
+  expect(customer.name).toBe('John Doe');
 });
 ```
 
 ### 3. Business Workflow Testing
-Test complete business processes:
+Combine AI testing with unit tests for complete validation:
 
-```javascript
-// Car Dealership Sales Workflow
-await helpers.createRecord('Customer', { name: 'Alice', email: 'alice@example.com' });
-await helpers.createRecord('Vehicle', { make: 'Ford', model: 'F-150' });
-await helpers.createRecord('Sale', { customer: 'Alice', vehicle: 'Ford F-150' });
-```
+1. **Replit Agent Testing**: "Test the complete car sales workflow"
+2. **Unit Tests**: Validate business logic and data integrity
+3. **API Tests**: Verify module endpoints and security
 
 ## Test Categories
 
-### Module Hotswap Tests (`module-hotswap.spec.ts`)
+### AI-Powered App Testing (Replit Agent)
+- Complete business workflow validation
+- User interface interaction testing
+- Automatic issue detection and reporting
+- Visual feedback through video replays
+
+### Module Hotswap Tests (`module-hotswap.test.js`)
 - Export/import module workflows
 - Zero-downtime deployment validation
 - Module status and health checks
 - Security validation
 
-### Car Dealership Tests (`car-dealership.spec.ts`)
+### Car Dealership Tests (`car-dealership.test.js`)
 - Customer management workflows
 - Vehicle inventory management
 - Sales process validation
 - Tenant data isolation
 
-### Natural Language Tests (`natural-language.spec.ts`)
-- Business scenario interpretation
-- Natural language to test action conversion
-- Business workflow automation
+### Unit Testing (`*.test.js`)
+- Business logic validation
+- API endpoint testing
+- Data integrity verification
+- Module functionality testing
 
 ## Configuration
 
 ### Environment Variables
-Set these for security:
+Set these for testing:
 ```bash
 export TEST_ADMIN_USERNAME="your-admin-username"
 export TEST_ADMIN_PASSWORD="your-admin-password"
-export REPL_URL="http://localhost:5000"
+export NODE_ENV="test"
 ```
 
-### Browser Configuration
-The framework uses headless Chromium optimized for Replit environment.
+### Replit Agent Configuration
+Enable App Testing in your Replit environment:
+1. Open Agent Tools panel
+2. Enable "App Testing" feature
+3. Configure testing frequency and scope
 
 ## Reports
 
 After running tests, reports are available in:
 - `test-results/results.json` - JSON test results
 - `test-results/junit.xml` - JUnit XML for CI/CD
-- `playwright-report/index.html` - HTML report
+- Replit Agent video replays - Interactive testing session recordings
 
 ## Writing New Tests
 
@@ -105,67 +120,78 @@ After running tests, reports are available in:
 4. Test both positive and negative scenarios
 
 ### Example Business Test
+
+**Using Replit Agent:**
+```
+Ask Agent: "Test the car dealership sales workflow - create a customer, add a vehicle to inventory, and complete a sale"
+```
+
+**Using Unit Tests:**
 ```javascript
-test('car dealership: complete sale process', async ({ page }) => {
-  const helpers = new BusinessAnalystHelpers(page);
-  await helpers.loginAsSuperAdmin();
-  
-  // Business workflow: Customer walks in, finds car, completes purchase
-  await helpers.navigateToModule('Customers');
-  await helpers.createRecord('Customer', {
+test('car dealership: complete sale process', async () => {
+  // Test business logic
+  const customer = await createCustomer({
     name: 'John Smith',
     email: 'john@example.com'
   });
   
-  await helpers.navigateToModule('Inventory');
-  await helpers.createRecord('Vehicle', {
+  const vehicle = await createVehicle({
     make: 'Toyota',
     model: 'Camry',
-    price: '25000'
+    price: 25000
   });
   
-  await helpers.navigateToModule('Sales');
-  await helpers.createRecord('Sale', {
-    customer: 'John Smith',
-    vehicle: 'Toyota Camry',
-    finalPrice: '24500'
+  const sale = await createSale({
+    customerId: customer.id,
+    vehicleId: vehicle.id,
+    finalPrice: 24500
   });
   
-  // Verify sale appears in reports
-  await expect(page.locator('text=John Smith')).toBeVisible();
+  expect(sale.id).toBeDefined();
+  expect(sale.finalPrice).toBe(24500);
 });
 ```
 
 ## Integration with Module Development
 
 ### Export/Import Testing
+
+**Using Replit Agent:**
+```
+Ask Agent: "Test module export and import functionality - export the inventory module, verify the package structure, and test importing it back"
+```
+
+**Using API Tests:**
 ```javascript
-// Export module for modification
-const modulePackage = await helpers.exportModule('inventory');
-
-// Modify module (business analyst makes changes)
-modulePackage.version = '1.1.0';
-modulePackage.config.description = 'Updated for car dealership';
-
-// Import updated module
-await helpers.importModule(modulePackage);
-
-// Verify update was successful
-await helpers.hotswapModule('inventory');
+test('module export/import workflow', async () => {
+  // Test module export API
+  const exportResponse = await fetch('/api/system/modules/export/inventory');
+  expect(exportResponse.status).toBe(200);
+  
+  const modulePackage = await exportResponse.json();
+  expect(modulePackage.id).toBe('inventory');
+  
+  // Test module import API
+  const importResponse = await fetch('/api/system/modules/import', {
+    method: 'POST',
+    body: JSON.stringify(modulePackage)
+  });
+  expect(importResponse.status).toBe(200);
+});
 ```
 
 ## Troubleshooting
 
 ### Common Issues
-1. **Browser not found**: Ensure Chromium is installed in system dependencies
+1. **App Testing not working**: Ensure App Testing is enabled in Agent Tools panel
 2. **Auth failures**: Verify TEST_ADMIN_USERNAME and TEST_ADMIN_PASSWORD
-3. **Timeout errors**: Increase actionTimeout in config if needed
-4. **Module not found**: Ensure server is running on port 5000
+3. **Test failures**: Check server is running on port 5000
+4. **Module not found**: Ensure modules are properly deployed and discovered
 
 ### Debug Mode
 ```bash
 cd testing
-npx playwright test --config=playwright-mcp.config.ts --debug
+npm test -- --verbose
 ```
 
-This opens Playwright Inspector for step-by-step debugging.
+Or use Replit Agent's interactive testing mode for real-time debugging.

@@ -99,7 +99,8 @@ Preferred communication style: Simple, everyday language.
 - **SMTP Configuration**: Configurable email transport
 
 ### Testing & Documentation
-- **Playwright MCP Framework**: Business analyst testing framework with natural language support in `testing/` directory
+- **Replit Agent App Testing**: AI-powered browser testing with automatic issue detection and video replays in `testing/` directory
+- **Unit Testing**: Jest and Node.js testing frameworks for module validation and business logic verification
 - **Swagger/OpenAPI**: API documentation and testing interface
 - **React Router**: Client-side routing with error boundaries
 

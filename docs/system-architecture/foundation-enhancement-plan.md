@@ -1302,7 +1302,7 @@ export default modulesRouter;
 
 #### 4.2 Enhanced Validation and Testing Framework
 
-This section integrates static validation, runtime validation, and AI-powered testing using Playwright MCP to create a comprehensive testing framework for business analysts.
+This section integrates static validation, runtime validation, and AI-powered testing using Replit Agent App Testing to create a comprehensive testing framework for business analysts.
 
 ```typescript
 // src/server/lib/modules/enhanced-validation.ts
@@ -1538,141 +1538,153 @@ export class EnhancedModuleValidator {
 }
 ```
 
-### Playwright MCP Integration for Business Analysts
+### Replit Agent App Testing Integration for Business Analysts
 
 ```typescript
-// testing/playwright-mcp-integration.ts
-import { test, expect } from '@playwright/test';
+// testing/replit-agent-integration.ts
 
 /**
- * Business Analyst Testing Templates
- * Natural language test scenarios that translate to Playwright tests
+ * Business Analyst Testing with Replit Agent
+ * Natural language test scenarios that leverage Replit's AI-powered App Testing
  */
 export class BusinessAnalystTestSuite {
   
   /**
-   * Test module CRUD operations
+   * Generate natural language test requests for Replit Agent
    * Example: "Test that I can create, view, edit, and delete a customer record"
    */
-  static generateCRUDTests(moduleName: string, entityName: string) {
-    return `
-    test.describe('${moduleName} ${entityName} Management', () => {
-      test.use({ storageState: 'testing/auth-state.json' });
-      
-      test('Create new ${entityName}', async ({ page }) => {
-        await page.goto('/console');
-        await page.click('text=${moduleName}');
-        await page.click('text=Add ${entityName}');
-        
-        // Fill form with test data
-        await page.fill('[name="name"]', 'Test ${entityName}');
-        await page.click('button[type="submit"]');
-        
-        // Verify creation
-        await expect(page.locator('text=Test ${entityName}')).toBeVisible();
-      });
-      
-      test('Edit existing ${entityName}', async ({ page }) => {
-        // Navigate and edit logic
-        await page.goto('/console/${moduleName.toLowerCase()}');
-        await page.click('text=Test ${entityName}');
-        await page.click('text=Edit');
-        
-        await page.fill('[name="name"]', 'Updated ${entityName}');
-        await page.click('button[type="submit"]');
-        
-        await expect(page.locator('text=Updated ${entityName}')).toBeVisible();
-      });
-    });
-    `;
+  static generateCRUDTestRequests(moduleName: string, entityName: string): string[] {
+    return [
+      `Test creating a new ${entityName} in the ${moduleName} module - fill out the form and verify it saves successfully`,
+      `Test viewing the ${entityName} list in ${moduleName} - ensure all records are displayed correctly`,
+      `Test editing an existing ${entityName} - modify the details and confirm changes are saved`,
+      `Test deleting a ${entityName} record - verify the deletion confirmation and that the record is removed`
+    ];
   }
   
   /**
-   * Test business workflow
+   * Generate business workflow test scenarios
    * Example: "Test complete sales process from lead to closed deal"
    */
-  static generateWorkflowTests(workflowName: string, steps: string[]) {
-    return `
-    test('${workflowName} Workflow', async ({ page }) => {
-      test.use({ storageState: 'testing/auth-state.json' });
-      
-      ${steps.map((step, index) => `
-      // Step ${index + 1}: ${step}
-      await page.click('text=${step}');
-      await expect(page.locator('.workflow-step-${index + 1}')).toBeVisible();
-      `).join('\n')}
-    });
-    `;
+  static generateWorkflowTestRequests(workflowName: string, steps: string[]): string {
+    return `Test the complete ${workflowName} workflow: ${steps.join(' -> ')}. Verify each step works correctly and data flows properly between screens.`;
+  }
+
+  /**
+   * Generate multi-tenant testing scenarios
+   */
+  static generateTenantIsolationTests(): string[] {
+    return [
+      "Test tenant data isolation - create data in one tenant, switch to another tenant, and verify the data is not visible",
+      "Test user switching between tenants - ensure the interface updates correctly and shows only tenant-specific data",
+      "Test that super admin can access all tenant data while regular users see only their tenant data"
+    ];
   }
 }
 
 /**
- * Natural Language Test Runner
- * Translates business analyst descriptions to executable tests
+ * Unit Testing Framework for Module Validation
+ * Complements Replit Agent testing with programmatic validation
  */
-export class NaturalLanguageTestRunner {
+export class ModuleUnitTestRunner {
+  
+  /**
+   * Test module API endpoints
+   */
+  static async testModuleAPI(moduleId: string): Promise<void> {
+    const tests = [
+      {
+        name: `${moduleId} - GET endpoints`,
+        test: async () => {
+          const response = await fetch(`/api/${moduleId}`);
+          expect(response.status).toBe(200);
+          const data = await response.json();
+          expect(Array.isArray(data)).toBe(true);
+        }
+      },
+      {
+        name: `${moduleId} - POST endpoints`,
+        test: async () => {
+          const testData = { name: 'Test Item', description: 'Test Description' };
+          const response = await fetch(`/api/${moduleId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(testData)
+          });
+          expect(response.status).toBe(201);
+        }
+      }
+    ];
+
+    for (const test of tests) {
+      try {
+        await test.test();
+        console.log(`✅ ${test.name} - PASSED`);
+      } catch (error) {
+        console.error(`❌ ${test.name} - FAILED:`, error);
+      }
+    }
+  }
+
+  /**
+   * Test module database schema
+   */
+  static async testModuleSchema(moduleId: string): Promise<void> {
+    // Verify tables exist and have correct structure
+    const schemaValidation = await this.validateSchemaStructure(moduleId);
+    expect(schemaValidation.valid).toBe(true);
+  }
+
+  private static async validateSchemaStructure(moduleId: string) {
+    // Implementation would check database schema
+    return { valid: true, errors: [] };
+  }
+}
+
+/**
+ * Natural Language Test Coordinator
+ * Bridges business analyst requests with Replit Agent and unit tests
+ */
+export class NaturalLanguageTestCoordinator {
   
   static async runBusinessScenario(scenario: string): Promise<void> {
-    // Parse natural language scenario
-    const parsedTest = this.parseScenario(scenario);
+    console.log(`🎯 Testing Scenario: ${scenario}`);
     
-    // Generate Playwright test code
-    const testCode = this.generateTestCode(parsedTest);
+    // Parse scenario to determine test approach
+    const testPlan = this.parseScenario(scenario);
     
-    // Execute test
-    await this.executeTest(testCode);
+    // Run unit tests first for API/logic validation
+    if (testPlan.requiresUnitTests) {
+      await this.runUnitTests(testPlan.moduleId);
+    }
+    
+    // Generate Replit Agent test request
+    const agentRequest = this.generateAgentTestRequest(scenario);
+    console.log(`🤖 Replit Agent Request: ${agentRequest}`);
+    
+    // Log for business analyst to copy-paste to Agent
+    console.log(`\n📋 Copy this request to Replit Agent:\n"${agentRequest}"\n`);
   }
   
   private static parseScenario(scenario: string) {
-    // Simple scenario parsing (can be enhanced with NLP)
-    const patterns = {
-      create: /create|add|new/i,
-      read: /view|see|display|show/i,
-      update: /edit|modify|change|update/i,
-      delete: /delete|remove/i,
-      navigate: /go to|navigate|visit/i
+    const modulePattern = /(inventory|customer|sales|product|task)/i;
+    const moduleMatch = scenario.match(modulePattern);
+    
+    return {
+      moduleId: moduleMatch ? moduleMatch[1].toLowerCase() : 'unknown',
+      requiresUnitTests: scenario.includes('API') || scenario.includes('database'),
+      testType: scenario.includes('workflow') ? 'workflow' : 'crud'
     };
-    
-    const actions = [];
-    for (const [action, pattern] of Object.entries(patterns)) {
-      if (pattern.test(scenario)) {
-        actions.push(action);
-      }
-    }
-    
-    return { scenario, actions };
   }
   
-  private static generateTestCode(parsedTest: any): string {
-    // Generate executable Playwright code from parsed scenario
-    return `
-    test('${parsedTest.scenario}', async ({ page }) => {
-      test.use({ storageState: 'testing/auth-state.json' });
-      
-      ${parsedTest.actions.map((action: string) => {
-        switch (action) {
-          case 'create':
-            return `await page.click('text=Add'); await page.fill('[name="name"]', 'Test Item');`;
-          case 'read':
-            return `await expect(page.locator('.data-table')).toBeVisible();`;
-          case 'update':
-            return `await page.click('text=Edit'); await page.fill('[name="name"]', 'Updated Item');`;
-          case 'delete':
-            return `await page.click('text=Delete'); await page.click('text=Confirm');`;
-          case 'navigate':
-            return `await page.goto('/console');`;
-          default:
-            return `// ${action}`;
-        }
-      }).join('\n      ')}
-    });
-    `;
+  private static async runUnitTests(moduleId: string): Promise<void> {
+    console.log(`🧪 Running unit tests for ${moduleId}...`);
+    await ModuleUnitTestRunner.testModuleAPI(moduleId);
+    await ModuleUnitTestRunner.testModuleSchema(moduleId);
   }
   
-  private static async executeTest(testCode: string): Promise<void> {
-    // Execute generated test code
-    console.log('Generated test:', testCode);
-    // Implementation depends on runtime execution environment
+  private static generateAgentTestRequest(scenario: string): string {
+    return `Please test this scenario: ${scenario}. Navigate through the application, perform the required actions, and verify the results. Pay attention to form validation, data persistence, and user feedback messages.`;
   }
 }
 ```
@@ -1683,8 +1695,9 @@ export class NaturalLanguageTestRunner {
 # Validate module before export
 npx tsx tools/validate-module.ts --module inventory --type development
 
-# Run natural language tests
-npx tsx tools/run-business-tests.ts --scenario "Test car dealership sales workflow"
+# Run business scenarios with Replit Agent
+# Copy the following request to Replit Agent:
+# "Test car dealership sales workflow - create a customer, add a vehicle to inventory, and complete a sale"
 
 # Generate test report for business stakeholders
 npx tsx tools/generate-test-report.ts --module inventory --format html
