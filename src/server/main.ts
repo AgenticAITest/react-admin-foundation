@@ -10,6 +10,7 @@ import optionRoutes from "./routes/system/option";
 import userRoutes from "./routes/system/user";
 import departmentRoutes from "./routes/demo/department";
 import masterRoutes from "./routes/master";
+import testSuperAdminRoutes from "./routes/test-super-admin";
 import { rateLimit } from 'express-rate-limit'
 import fileUpload from "express-fileupload";
 import { routeRegistry } from "./lib/modules/route-registry";
@@ -99,6 +100,9 @@ app.use('/api/demo/department', departmentRoutes);
 
 // master data routes
 app.use('/api/master', masterRoutes);
+
+// super admin test routes
+app.use('/api/test', testSuperAdminRoutes);
 
 // Initialize module system
 async function initializeModuleSystem() {
