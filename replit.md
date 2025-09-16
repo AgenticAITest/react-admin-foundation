@@ -99,6 +99,7 @@ Preferred communication style: Simple, everyday language.
 - **SMTP Configuration**: Configurable email transport
 
 ### Testing & Documentation
+- **Playwright MCP Framework**: Business analyst testing framework with natural language support in `testing/` directory
 - **Swagger/OpenAPI**: API documentation and testing interface
 - **React Router**: Client-side routing with error boundaries
 
