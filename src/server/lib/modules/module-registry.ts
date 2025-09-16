@@ -2,6 +2,7 @@ import { db } from '../db';
 import { tenant } from '../db/schema/system';
 import { eq } from 'drizzle-orm';
 import fs from 'fs/promises';
+import path from 'path';
 import { tenantDbManager } from '../db/tenant-db';
 import { routeRegistry } from './route-registry';
 
@@ -73,7 +74,7 @@ export class ModuleRegistry {
         const configPath = `src/modules/${moduleDir}/module.config.ts`;
         if (await fs.access(configPath).then(() => true).catch(() => false)) {
           try {
-            const { default: config } = await import(configPath);
+            const { default: config } = await import(path.resolve(configPath));
             // Use registerModule for proper validation instead of direct map assignment
             await this.registerModule(config);
             console.log(`✅ Discovered and registered module: ${config.name}`);

@@ -123,8 +123,8 @@ export const ${entityNamePlural}Relations = relations(${entityNamePlural}, ({ on
     routes: `
 import { Router } from 'express';
 import { asc, count, desc, eq, ilike } from 'drizzle-orm';
-import { authenticated, authorized } from '../../../server/middleware/authMiddleware';
-import { validateData } from '../../../server/middleware/validationMiddleware';
+import { authenticated, authorized } from '../../../../server/middleware/authMiddleware';
+import { validateData } from '../../../../server/middleware/validationMiddleware';
 import { ${entityNameCamel}Schema, ${entityNameCamel}EditSchema } from '../schemas/${entityNameCamel}Schema';
 import { ${entityNamePlural} } from '../database/schema';
 
@@ -143,7 +143,7 @@ ${entityNameCamel}Router.use(authenticated());
  *     security:
  *       - bearerAuth: []
  */
-${entityNameCamel}Router.get("/", 
+${entityNameCamel}Router.get("/${entityNamePlural}", 
   authorized(['SYSADMIN', 'USER'], '${moduleName}.${entityNamePlural}.view'), 
   async (req, res) => {
     // Use existing pagination pattern
@@ -208,7 +208,7 @@ ${entityNameCamel}Router.get("/",
  *     security:
  *       - bearerAuth: []
  */
-${entityNameCamel}Router.post("/",
+${entityNameCamel}Router.post("/${entityNamePlural}",
   authorized(['SYSADMIN', 'USER'], '${moduleName}.${entityNamePlural}.add'),
   validateData(${entityNameCamel}Schema),
   async (req, res) => {
@@ -236,7 +236,7 @@ ${entityNameCamel}Router.post("/",
  *     security:
  *       - bearerAuth: []
  */
-${entityNameCamel}Router.get("/:id",
+${entityNameCamel}Router.get("/${entityNamePlural}/:id",
   authorized(['SYSADMIN', 'USER'], '${moduleName}.${entityNamePlural}.view'),
   async (req, res) => {
     const { id } = req.params;
@@ -270,7 +270,7 @@ ${entityNameCamel}Router.get("/:id",
  *     security:
  *       - bearerAuth: []
  */
-${entityNameCamel}Router.put("/:id",
+${entityNameCamel}Router.put("/${entityNamePlural}/:id",
   authorized(['SYSADMIN', 'USER'], '${moduleName}.${entityNamePlural}.edit'),
   validateData(${entityNameCamel}EditSchema),
   async (req, res) => {
@@ -308,7 +308,7 @@ ${entityNameCamel}Router.put("/:id",
  *     security:
  *       - bearerAuth: []
  */
-${entityNameCamel}Router.delete("/:id",
+${entityNameCamel}Router.delete("/${entityNamePlural}/:id",
   authorized(['SYSADMIN', 'USER'], '${moduleName}.${entityNamePlural}.delete'),
   async (req, res) => {
     const { id } = req.params;
@@ -343,8 +343,8 @@ export { default } from './${entityNameCamel}Router';`,
     routerFile: `
 import { Router } from 'express';
 import { asc, count, desc, eq, ilike } from 'drizzle-orm';
-import { authenticated, authorized } from '../../../server/middleware/authMiddleware';
-import { validateData } from '../../../server/middleware/validationMiddleware';
+import { authenticated, authorized } from '../../../../server/middleware/authMiddleware';
+import { validateData } from '../../../../server/middleware/validationMiddleware';
 import { ${entityNameCamel}Schema, ${entityNameCamel}EditSchema } from '../schemas/${entityNameCamel}Schema';
 import { ${entityNamePlural} } from '../database/schema';
 
@@ -354,7 +354,7 @@ const router = Router();
 router.use(authenticated());
 
 // GET /${entityNamePlural} - List all ${entityNamePlural}
-router.get("/", 
+router.get("/${entityNamePlural}", 
   authorized(['SYSADMIN', 'USER'], '${moduleName}.${entityNamePlural}.view'), 
   async (req, res) => {
     const pageParam = req.query.page as string | undefined;
@@ -406,7 +406,7 @@ router.get("/",
 );
 
 // POST /${entityNamePlural} - Create new ${entityName.toLowerCase()}
-router.post("/",
+router.post("/${entityNamePlural}",
   authorized(['SYSADMIN', 'USER'], '${moduleName}.${entityNamePlural}.add'),
   validateData(${entityNameCamel}Schema),
   async (req, res) => {
@@ -425,7 +425,7 @@ router.post("/",
 );
 
 // GET /${entityNamePlural}/:id - Get ${entityName.toLowerCase()} by ID
-router.get("/:id",
+router.get("/${entityNamePlural}/:id",
   authorized(['SYSADMIN', 'USER'], '${moduleName}.${entityNamePlural}.view'),
   async (req, res) => {
     const { id } = req.params;
@@ -450,7 +450,7 @@ router.get("/:id",
 );
 
 // PUT /${entityNamePlural}/:id - Update ${entityName.toLowerCase()}
-router.put("/:id",
+router.put("/${entityNamePlural}/:id",
   authorized(['SYSADMIN', 'USER'], '${moduleName}.${entityNamePlural}.edit'),
   validateData(${entityNameCamel}EditSchema),
   async (req, res) => {
@@ -479,7 +479,7 @@ router.put("/:id",
 );
 
 // DELETE /${entityNamePlural}/:id - Delete ${entityName.toLowerCase()}
-router.delete("/:id",
+router.delete("/${entityNamePlural}/:id",
   authorized(['SYSADMIN', 'USER'], '${moduleName}.${entityNamePlural}.delete'),
   async (req, res) => {
     const { id } = req.params;
