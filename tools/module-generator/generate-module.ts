@@ -45,6 +45,7 @@ async function main() {
   }
 }
 
-if (require.main === module) {
+// Check if this file is being run directly
+if (process.argv[1].endsWith('generate-module.ts')) {
   main();
 }

@@ -611,11 +611,12 @@ export type ${entityName}Edit = z.infer<typeof ${entityNameCamel}EditSchema>;`,
 };
 
 /**
- * Generate a CRUD module with automatic permission integration
+ * Generate a CRUD module with automatic permission and database schema integration
  */
 export const generateCrudModuleWithIntegration = async (options: TemplateOptions) => {
-  // Import permission integrator
+  // Import integrators
   const { PermissionIntegrator } = await import('../lib/permission-integrator');
+  const { DatabaseSchemaIntegrator } = await import('../lib/database-schema-integrator');
   
   const moduleConfig = generateCrudModule(options);
   
@@ -627,11 +628,28 @@ export const generateCrudModuleWithIntegration = async (options: TemplateOptions
         moduleConfig.metadata.permissions
       );
       
-      console.log(`✅ Module '${moduleConfig.metadata.moduleId}' generated with integrated permissions`);
+      console.log(`✅ Module '${moduleConfig.metadata.moduleId}' permissions integrated`);
     } catch (error) {
       console.error(`❌ Failed to integrate permissions for module '${moduleConfig.metadata.moduleId}':`, error);
       console.log('ℹ️  You may need to manually run permission integration later');
     }
+  }
+
+  // Automatically integrate database schema
+  try {
+    await DatabaseSchemaIntegrator.integrateModuleSchema({
+      moduleId: options.moduleName,
+      moduleName: options.entityName + ' Management',
+      entityName: options.entityName,
+      entityNamePlural: options.entityName.toLowerCase() + 's',
+      entityNameCamel: options.entityName.charAt(0).toLowerCase() + options.entityName.slice(1),
+      fields: options.fields || []
+    });
+    
+    console.log(`✅ Module '${moduleConfig.metadata.moduleId}' database schema integrated`);
+  } catch (error) {
+    console.error(`❌ Failed to integrate database schema for module '${moduleConfig.metadata.moduleId}':`, error);
+    console.log('ℹ️  You may need to manually run database schema integration later');
   }
   
   return moduleConfig;
