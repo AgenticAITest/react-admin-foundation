@@ -134,12 +134,12 @@ roleRoutes.get("/", authorized('SYSADMIN', 'system.role.view'), async (req, res)
       , eq(role.isSystem, false));
 
   // Get total count with filter
-  const [{ value: total }] = await db
+  const [{ value: total }] = await req.db!
     .select({ value: count() })
     .from(role)
     .where(filterCondition);
 
-  const roles = await db
+  const roles = await req.db!
     .select()
     .from(role)
     .where(filterCondition)
@@ -216,7 +216,7 @@ roleRoutes.post("/add", authorized('SYSADMIN', 'system.role.add'), validateData(
   try {
     let newRole: any;
     // transaction
-    await db.transaction(async (tx) => {
+    await req.db!.transaction(async (tx) => {
       // insert role data
       //const roleId = crypto.randomUUID();
       newRole = await tx.insert(role).values({
@@ -270,7 +270,7 @@ roleRoutes.get("/export", authorized('SYSADMIN', 'system.role.view'), async (req
   if (!req.user) {
     return res.status(401).json({ error: "Unauthorized" });
   }
-  const roles = await db.select().from(role)
+  const roles = await req.db!.select().from(role)
     .where(eq(role.tenantId, req.user?.activeTenantId))
     .then((rows) => rows.map((row) => ({
       id: row.id,
@@ -346,7 +346,7 @@ roleRoutes.post("/import", authorized('SYSADMIN', 'system.role.add'), async (req
     console.log(roles);
     
     // Validate and insert roles into the database
-    await db.transaction(async (tx) => {
+    await req.db!.transaction(async (tx) => {
       for (const roleData of roles) {
         const { code, name, description } = roleData;
         await tx.insert(role).values({
@@ -389,7 +389,7 @@ roleRoutes.get("/ref-permissions", authorized('SYSADMIN', 'system.role.view'), a
     return res.status(401).json({ error: "Unauthorized" });
   }
   try {
-    const permissions = await db.select().from(permission)
+    const permissions = await req.db!.select().from(permission)
       .where(eq(permission.tenantId, req.user?.activeTenantId))
       .then((rows) => rows.map((row) => ({
         id: row.id,
@@ -437,49 +437,45 @@ roleRoutes.get("/:id", authorized('SYSADMIN', 'system.role.view'), async (req, r
 
   try {
 
-    const data = await db.query.role.findFirst({
-      columns: {
-        id: true,
-        code: true,
-        name: true,
-        description: true,
-        tenantId: true,
-      },
-      where: and(eq(role.id, idParam), eq(role.tenantId, req.user?.activeTenantId)),
-      with: {
-        permissions: {
-          columns: {
-            permissionId: false,
-            roleId: false,
-            tenantId: false
-          },
-          where: eq(rolePermission.tenantId, req.user?.activeTenantId),
-          with: {
-            permission: {
-              columns: {
-                id: true,
-                code: true,
-                name: true,
-                description: true
-              }
-            }
-          }
-        }
-      }
-    });
-    
-    if (!data) {
+    // Get role data first
+    const roleData = await req.db!
+      .select({
+        id: role.id,
+        code: role.code,
+        name: role.name,
+        description: role.description,
+        tenantId: role.tenantId,
+      })
+      .from(role)
+      .where(and(eq(role.id, idParam), eq(role.tenantId, req.user?.activeTenantId)))
+      .limit(1)
+      .then((rows) => rows[0]);
+
+    if (!roleData) {
       return res.status(404).json({ error: "Role not found" });
     }
 
-    const permissions = data.permissions.map((p) => ({
-      id: p.permission.id,
-      code: p.permission.code,
-      name: p.permission.name,
-      description: p.permission.description
-    }));
+    // Get role permissions separately
+    const rolePermissions = await req.db!
+      .select({
+        id: permission.id,
+        code: permission.code,
+        name: permission.name,
+        description: permission.description
+      })
+      .from(rolePermission)
+      .innerJoin(permission, eq(rolePermission.permissionId, permission.id))
+      .where(and(
+        eq(rolePermission.roleId, idParam),
+        eq(rolePermission.tenantId, req.user?.activeTenantId)
+      ));
 
-    res.json({ ...data, permissions });
+    const data = {
+      ...roleData,
+      permissions: rolePermissions
+    };
+
+    res.json(data);
   } catch (error) {
     console.error("Error fetching role:", error);
     res.status(500).json({ error: "Internal server error." });
@@ -539,7 +535,7 @@ roleRoutes.put("/:id/edit", authorized('SYSADMIN', 'system.role.edit'), validate
   try {
     let updatedRole: any;
     // transaction
-    await db.transaction(async (tx) => {
+    await req.db!.transaction(async (tx) => {
       // delete existing role permissions
       await tx.delete(rolePermission).where(eq(rolePermission.roleId, idParam));
       if (permIds.length > 0) {
@@ -610,7 +606,7 @@ roleRoutes.delete("/:id/delete", authorized('SYSADMIN', 'system.role.delete'), a
   try {
     let deletedRole: any;
     // transaction
-    await db.transaction(async (tx) => {
+    await req.db!.transaction(async (tx) => {
       // delete role permission
       await tx.delete(rolePermission).where(
         and(eq(rolePermission.roleId, idParam), eq(rolePermission.tenantId, tenantId))

@@ -139,12 +139,12 @@ userRoutes.get("/", authorized('SYSADMIN', 'system.user.view'), async (req, res)
       ne(user.username, 'sysadmin'));
 
   // Get total count with filter
-  const [{ value: total }] = await db
+  const [{ value: total }] = await req.db!
     .select({ value: count() })
     .from(user)
     .where(filterCondition);
 
-  const users = await db
+  const users = await req.db!
     .select(
       {
         id: user.id,
@@ -250,7 +250,7 @@ userRoutes.post("/add", authorized('SYSADMIN', 'system.user.add'), validateData(
     let newUser: any;
     const passwordHash = await bcrypt.hash(password, 10);
     // transaction
-    await db.transaction(async (tx) => {
+    await req.db!.transaction(async (tx) => {
       // insert role data
       //const roleId = crypto.randomUUID();
       newUser = await tx.insert(user).values({
@@ -316,7 +316,7 @@ userRoutes.get("/ref-roles", authorized('SYSADMIN', 'system.user.view'), async (
     return res.status(401).json({ error: "Unauthorized" });
   }
   try {
-    const roles = await db.select().from(role)
+    const roles = await req.db!.select().from(role)
       .where(eq(role.tenantId, req.user?.activeTenantId))
       .then((rows) => rows.map((row) => ({
         id: row.id,
@@ -536,53 +536,49 @@ userRoutes.get("/:id", authorized('SYSADMIN', 'system.user.view'), async (req, r
   }
 
   try {
-    const data = await db.query.user.findFirst({
-      columns: {
-        id: true,
-        username: true,
-        fullname: true,
-        email: true,
-        avatar: true,
-        status: true,
-        activeTenantId: true,
-        createdAt: true,
-        updatedAt: true
-      },
-      where: and(eq(user.id, idParam), eq(user.activeTenantId, req.user?.activeTenantId)),
-      with: {
-        roles: {
-          columns: {
-            userId: false,
-            roleId: false,
-            tenantId: false
-          },
-          where: eq(userRole.tenantId, req.user?.activeTenantId),
-          with: {
-            role: {
-              columns: {
-                id: true,
-                code: true,
-                name: true,
-                description: true
-              }
-            }
-          }
-        }
-      }
-    });
-    
-    if (!data) {
+    // Get user data first
+    const userData = await req.db!
+      .select({
+        id: user.id,
+        username: user.username,
+        fullname: user.fullname,
+        email: user.email,
+        avatar: user.avatar,
+        status: user.status,
+        activeTenantId: user.activeTenantId,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt
+      })
+      .from(user)
+      .where(and(eq(user.id, idParam), eq(user.activeTenantId, req.user?.activeTenantId)))
+      .limit(1)
+      .then((rows) => rows[0]);
+
+    if (!userData) {
       return res.status(404).json({ error: "User not found" });
     }
 
-    const roles = data.roles.map((p) => ({
-      id: p.role.id,
-      code: p.role.code,
-      name: p.role.name,
-      description: p.role.description
-    }));
+    // Get user roles separately
+    const userRoles = await req.db!
+      .select({
+        id: role.id,
+        code: role.code,
+        name: role.name,
+        description: role.description
+      })
+      .from(userRole)
+      .innerJoin(role, eq(userRole.roleId, role.id))
+      .where(and(
+        eq(userRole.userId, idParam),
+        eq(userRole.tenantId, req.user?.activeTenantId)
+      ));
 
-    res.json({ ...data, roles: roles });
+    const data = {
+      ...userData,
+      roles: userRoles
+    };
+
+    res.json(data);
   } catch (error) {
     console.error("Error fetching user:", error);
     res.status(500).json({ error: "Internal server error." });
@@ -681,7 +677,7 @@ userRoutes.put("/:id/edit", authorized('SYSADMIN', 'system.user.edit'), validate
   try {
     let updatedUser: any;
     // transaction
-    await db.transaction(async (tx) => {
+    await req.db!.transaction(async (tx) => {
       // delete existing user roles
       await tx.delete(userRole).where(eq(userRole.userId, idParam));
 
@@ -798,7 +794,7 @@ userRoutes.post("/:id/reset-password", authorized('SYSADMIN', 'system.user.edit'
     let updatedUser: any;
     const passwordHash = await bcrypt.hash(password, 10);
     // transaction
-    await db.transaction(async (tx) => {
+    await req.db!.transaction(async (tx) => {
       // update user data
       updatedUser = await tx
         .update(user)
@@ -866,7 +862,7 @@ userRoutes.delete("/:id/delete", authorized('SYSADMIN', 'system.user.delete'), a
   try {
     let deletedUser: any;
     // transaction
-    await db.transaction(async (tx) => {
+    await req.db!.transaction(async (tx) => {
       // delete role permission
       await tx.delete(userRole).where(
         and(eq(userRole.userId, idParam), eq(userRole.tenantId, tenantId))
