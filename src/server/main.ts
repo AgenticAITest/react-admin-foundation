@@ -127,9 +127,23 @@ async function initializeModuleSystem() {
   }
 }
 
-// Initialize module system after setting up core routes
-initializeModuleSystem();
+// Initialize module system and start server only after everything is ready
+async function startServer() {
+  try {
+    // Initialize module system first
+    await initializeModuleSystem();
+    
+    // Note: Removed catch-all API route to avoid path-to-regexp conflicts
+    // The ViteExpress integration should handle API routing properly
+    
+    // Start the server only after all routes are registered
+    ViteExpress.listen(app, 5000, () =>
+      console.log("Server is listening on port 5000..."),
+    );
+  } catch (error) {
+    console.error('❌ Failed to start server:', error);
+    process.exit(1);
+  }
+}
 
-ViteExpress.listen(app, 5000, () =>
-  console.log("Server is listening on port 5000..."),
-);
+startServer();
