@@ -1,0 +1,142 @@
+<testsuites id="" name="" tests="32" failures="0" skipped="32" errors="0" time="0.3652730000000001">
+<testsuite name="car-dealership.spec.ts" timestamp="2025-09-16T12:15:36.083Z" hostname="chromium" tests="6" failures="0" skipped="6" time="0" errors="0">
+<testcase name="Car Dealership Business Workflows › complete customer management workflow" classname="car-dealership.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Car Dealership Business Workflows › vehicle inventory management" classname="car-dealership.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Car Dealership Business Workflows › sales process workflow" classname="car-dealership.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Car Dealership Business Workflows › tenant data isolation" classname="car-dealership.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Dealership Module Integration › module export and import workflow" classname="car-dealership.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Dealership Module Integration › hotswap module without downtime" classname="car-dealership.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="module-hotswap.spec.ts" timestamp="2025-09-16T12:15:36.083Z" hostname="chromium" tests="5" failures="0" skipped="5" time="0" errors="0">
+<testcase name="Module Hotswap System › should show module status" classname="module-hotswap.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Module Hotswap System › should export module successfully" classname="module-hotswap.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Module Hotswap System › should validate module security" classname="module-hotswap.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Module Hotswap System › should handle module rediscovery" classname="module-hotswap.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Business Analyst Module Development › complete module development workflow" classname="module-hotswap.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="natural-language.spec.ts" timestamp="2025-09-16T12:15:36.083Z" hostname="chromium" tests="5" failures="0" skipped="5" time="0" errors="0">
+<testcase name="Natural Language Business Tests › interpret business scenario: create customer" classname="natural-language.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Natural Language Business Tests › interpret business scenario: export module" classname="natural-language.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Natural Language Business Tests › interpret business scenario: switch tenant" classname="natural-language.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Business Workflows (Natural Language Style) › Car Dealership: Complete sales workflow" classname="natural-language.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Business Workflows (Natural Language Style) › Car Rental: Complete rental workflow" classname="natural-language.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="car-dealership.spec.ts" timestamp="2025-09-16T12:15:36.083Z" hostname="Mobile Chrome" tests="6" failures="0" skipped="6" time="0" errors="0">
+<testcase name="Car Dealership Business Workflows › complete customer management workflow" classname="car-dealership.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Car Dealership Business Workflows › vehicle inventory management" classname="car-dealership.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Car Dealership Business Workflows › sales process workflow" classname="car-dealership.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Car Dealership Business Workflows › tenant data isolation" classname="car-dealership.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Dealership Module Integration › module export and import workflow" classname="car-dealership.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Dealership Module Integration › hotswap module without downtime" classname="car-dealership.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="module-hotswap.spec.ts" timestamp="2025-09-16T12:15:36.083Z" hostname="Mobile Chrome" tests="5" failures="0" skipped="5" time="0" errors="0">
+<testcase name="Module Hotswap System › should show module status" classname="module-hotswap.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Module Hotswap System › should export module successfully" classname="module-hotswap.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Module Hotswap System › should validate module security" classname="module-hotswap.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Module Hotswap System › should handle module rediscovery" classname="module-hotswap.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Business Analyst Module Development › complete module development workflow" classname="module-hotswap.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="natural-language.spec.ts" timestamp="2025-09-16T12:15:36.083Z" hostname="Mobile Chrome" tests="5" failures="0" skipped="5" time="0" errors="0">
+<testcase name="Natural Language Business Tests › interpret business scenario: create customer" classname="natural-language.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Natural Language Business Tests › interpret business scenario: export module" classname="natural-language.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Natural Language Business Tests › interpret business scenario: switch tenant" classname="natural-language.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Business Workflows (Natural Language Style) › Car Dealership: Complete sales workflow" classname="natural-language.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Business Workflows (Natural Language Style) › Car Rental: Complete rental workflow" classname="natural-language.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+</testsuites>

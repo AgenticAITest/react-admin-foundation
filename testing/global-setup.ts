@@ -17,9 +17,16 @@ async function globalSetup(config: FullConfig) {
     const baseURL = process.env.REPL_URL || 'http://localhost:5000';
     await page.goto(`${baseURL}/login`);
     
-    // Login as super admin for testing
-    await page.fill('[name="username"]', 'sysadmin');
-    await page.fill('[name="password"]', 'S3cr3T');
+    // Login as super admin for testing - require environment variables for security
+    const username = process.env.TEST_ADMIN_USERNAME;
+    const password = process.env.TEST_ADMIN_PASSWORD;
+    
+    if (!username || !password) {
+      throw new Error('TEST_ADMIN_USERNAME and TEST_ADMIN_PASSWORD environment variables are required for testing');
+    }
+    
+    await page.fill('[name="username"]', username);
+    await page.fill('[name="password"]', password);
     await page.click('button[type="submit"]');
     
     // Wait for authentication to complete

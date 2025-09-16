@@ -1,0 +1,806 @@
+{
+  "config": {
+    "configFile": "/home/runner/workspace/testing/playwright-mcp.config.ts",
+    "rootDir": "/home/runner/workspace/testing/tests",
+    "forbidOnly": false,
+    "fullyParallel": true,
+    "globalSetup": "/home/runner/workspace/testing/global-setup.ts",
+    "globalTeardown": "/home/runner/workspace/testing/global-teardown.ts",
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {},
+    "preserveOutput": "always",
+    "reporter": [
+      [
+        "html",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "test-results/results.json"
+        }
+      ],
+      [
+        "junit",
+        {
+          "outputFile": "test-results/junit.xml"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "quiet": false,
+    "projects": [
+      {
+        "outputDir": "/home/runner/workspace/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {},
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "/home/runner/workspace/testing/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      },
+      {
+        "outputDir": "/home/runner/workspace/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {},
+        "id": "Mobile Chrome",
+        "name": "Mobile Chrome",
+        "testDir": "/home/runner/workspace/testing/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "shard": null,
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.55.0",
+    "workers": 4,
+    "webServer": {
+      "command": "npm run dev",
+      "url": "http://localhost:5000",
+      "reuseExistingServer": true,
+      "timeout": 120000
+    }
+  },
+  "suites": [
+    {
+      "title": "car-dealership.spec.ts",
+      "file": "car-dealership.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Car Dealership Business Workflows",
+          "file": "car-dealership.spec.ts",
+          "line": 8,
+          "column": 6,
+          "specs": [
+            {
+              "title": "complete customer management workflow",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8bac225b09a6e28510ab-0b06acbb9108c54a9692",
+              "file": "car-dealership.spec.ts",
+              "line": 16,
+              "column": 3
+            },
+            {
+              "title": "vehicle inventory management",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8bac225b09a6e28510ab-b2a6fef19824c9057902",
+              "file": "car-dealership.spec.ts",
+              "line": 32,
+              "column": 3
+            },
+            {
+              "title": "sales process workflow",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8bac225b09a6e28510ab-0228baaac4d2bf2e30e3",
+              "file": "car-dealership.spec.ts",
+              "line": 54,
+              "column": 3
+            },
+            {
+              "title": "tenant data isolation",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8bac225b09a6e28510ab-21dd953d892edcd1639f",
+              "file": "car-dealership.spec.ts",
+              "line": 90,
+              "column": 3
+            },
+            {
+              "title": "complete customer management workflow",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Mobile Chrome",
+                  "projectName": "Mobile Chrome",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8bac225b09a6e28510ab-a7303d7e9788a45b3abb",
+              "file": "car-dealership.spec.ts",
+              "line": 16,
+              "column": 3
+            },
+            {
+              "title": "vehicle inventory management",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Mobile Chrome",
+                  "projectName": "Mobile Chrome",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8bac225b09a6e28510ab-b68d65bf7ffe8a36a3dc",
+              "file": "car-dealership.spec.ts",
+              "line": 32,
+              "column": 3
+            },
+            {
+              "title": "sales process workflow",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Mobile Chrome",
+                  "projectName": "Mobile Chrome",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8bac225b09a6e28510ab-5f662b556cae008b15c3",
+              "file": "car-dealership.spec.ts",
+              "line": 54,
+              "column": 3
+            },
+            {
+              "title": "tenant data isolation",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Mobile Chrome",
+                  "projectName": "Mobile Chrome",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8bac225b09a6e28510ab-e8ead01255e7bc5b1d48",
+              "file": "car-dealership.spec.ts",
+              "line": 90,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "Dealership Module Integration",
+          "file": "car-dealership.spec.ts",
+          "line": 127,
+          "column": 6,
+          "specs": [
+            {
+              "title": "module export and import workflow",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8bac225b09a6e28510ab-f72a23c0150173335a8b",
+              "file": "car-dealership.spec.ts",
+              "line": 135,
+              "column": 3
+            },
+            {
+              "title": "hotswap module without downtime",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8bac225b09a6e28510ab-dd520952bdfdc5b453bc",
+              "file": "car-dealership.spec.ts",
+              "line": 162,
+              "column": 3
+            },
+            {
+              "title": "module export and import workflow",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Mobile Chrome",
+                  "projectName": "Mobile Chrome",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8bac225b09a6e28510ab-7a825b38e735dd9d3ab9",
+              "file": "car-dealership.spec.ts",
+              "line": 135,
+              "column": 3
+            },
+            {
+              "title": "hotswap module without downtime",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Mobile Chrome",
+                  "projectName": "Mobile Chrome",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "8bac225b09a6e28510ab-ae24b764c9bf8714f941",
+              "file": "car-dealership.spec.ts",
+              "line": 162,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "module-hotswap.spec.ts",
+      "file": "module-hotswap.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Module Hotswap System",
+          "file": "module-hotswap.spec.ts",
+          "line": 7,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should show module status",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0f59ba3181d1c72ef45a-67fed480557ca2a6ccc0",
+              "file": "module-hotswap.spec.ts",
+              "line": 15,
+              "column": 3
+            },
+            {
+              "title": "should export module successfully",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0f59ba3181d1c72ef45a-9c381612b9f02475d499",
+              "file": "module-hotswap.spec.ts",
+              "line": 27,
+              "column": 3
+            },
+            {
+              "title": "should validate module security",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0f59ba3181d1c72ef45a-43326a33efbac43c31ad",
+              "file": "module-hotswap.spec.ts",
+              "line": 39,
+              "column": 3
+            },
+            {
+              "title": "should handle module rediscovery",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0f59ba3181d1c72ef45a-d355df53b4f740deb1ec",
+              "file": "module-hotswap.spec.ts",
+              "line": 49,
+              "column": 3
+            },
+            {
+              "title": "should show module status",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Mobile Chrome",
+                  "projectName": "Mobile Chrome",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0f59ba3181d1c72ef45a-ad7d0e57aa5fffe34926",
+              "file": "module-hotswap.spec.ts",
+              "line": 15,
+              "column": 3
+            },
+            {
+              "title": "should export module successfully",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Mobile Chrome",
+                  "projectName": "Mobile Chrome",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0f59ba3181d1c72ef45a-77c5f53042955c5a3137",
+              "file": "module-hotswap.spec.ts",
+              "line": 27,
+              "column": 3
+            },
+            {
+              "title": "should validate module security",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Mobile Chrome",
+                  "projectName": "Mobile Chrome",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0f59ba3181d1c72ef45a-c6f8cddcd44ea061af57",
+              "file": "module-hotswap.spec.ts",
+              "line": 39,
+              "column": 3
+            },
+            {
+              "title": "should handle module rediscovery",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Mobile Chrome",
+                  "projectName": "Mobile Chrome",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0f59ba3181d1c72ef45a-b6d41a2f91a4654ed450",
+              "file": "module-hotswap.spec.ts",
+              "line": 49,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "Business Analyst Module Development",
+          "file": "module-hotswap.spec.ts",
+          "line": 63,
+          "column": 6,
+          "specs": [
+            {
+              "title": "complete module development workflow",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0f59ba3181d1c72ef45a-3b492795f108891b2038",
+              "file": "module-hotswap.spec.ts",
+              "line": 65,
+              "column": 3
+            },
+            {
+              "title": "complete module development workflow",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Mobile Chrome",
+                  "projectName": "Mobile Chrome",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "0f59ba3181d1c72ef45a-792997fb2ea90652064d",
+              "file": "module-hotswap.spec.ts",
+              "line": 65,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "natural-language.spec.ts",
+      "file": "natural-language.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Natural Language Business Tests",
+          "file": "natural-language.spec.ts",
+          "line": 8,
+          "column": 6,
+          "specs": [
+            {
+              "title": "interpret business scenario: create customer",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "6547d3eedf1afd54b4e6-c179f7cbf9c6b84a4489",
+              "file": "natural-language.spec.ts",
+              "line": 16,
+              "column": 3
+            },
+            {
+              "title": "interpret business scenario: export module",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "6547d3eedf1afd54b4e6-44b59e2fcc58fd85fe46",
+              "file": "natural-language.spec.ts",
+              "line": 35,
+              "column": 3
+            },
+            {
+              "title": "interpret business scenario: switch tenant",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "6547d3eedf1afd54b4e6-1876f667e2e7b2cc0e41",
+              "file": "natural-language.spec.ts",
+              "line": 48,
+              "column": 3
+            },
+            {
+              "title": "interpret business scenario: create customer",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Mobile Chrome",
+                  "projectName": "Mobile Chrome",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "6547d3eedf1afd54b4e6-3ddc91f59eb246835c5d",
+              "file": "natural-language.spec.ts",
+              "line": 16,
+              "column": 3
+            },
+            {
+              "title": "interpret business scenario: export module",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Mobile Chrome",
+                  "projectName": "Mobile Chrome",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "6547d3eedf1afd54b4e6-c95dd53e9847322f0269",
+              "file": "natural-language.spec.ts",
+              "line": 35,
+              "column": 3
+            },
+            {
+              "title": "interpret business scenario: switch tenant",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Mobile Chrome",
+                  "projectName": "Mobile Chrome",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "6547d3eedf1afd54b4e6-85ecd236dd8191942177",
+              "file": "natural-language.spec.ts",
+              "line": 48,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "Business Workflows (Natural Language Style)",
+          "file": "natural-language.spec.ts",
+          "line": 66,
+          "column": 6,
+          "specs": [
+            {
+              "title": "Car Dealership: Complete sales workflow",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "6547d3eedf1afd54b4e6-f69f5bc84ff1cc6c15b6",
+              "file": "natural-language.spec.ts",
+              "line": 74,
+              "column": 3
+            },
+            {
+              "title": "Car Rental: Complete rental workflow",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "6547d3eedf1afd54b4e6-c4d4c2d82ce230b9acd5",
+              "file": "natural-language.spec.ts",
+              "line": 116,
+              "column": 3
+            },
+            {
+              "title": "Car Dealership: Complete sales workflow",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Mobile Chrome",
+                  "projectName": "Mobile Chrome",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "6547d3eedf1afd54b4e6-aa1d888d8755e35ea8b6",
+              "file": "natural-language.spec.ts",
+              "line": 74,
+              "column": 3
+            },
+            {
+              "title": "Car Rental: Complete rental workflow",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Mobile Chrome",
+                  "projectName": "Mobile Chrome",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "6547d3eedf1afd54b4e6-c0ec0055f4c17eb44d26",
+              "file": "natural-language.spec.ts",
+              "line": 116,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2025-09-16T12:15:35.719Z",
+    "duration": 365.27300000000014,
+    "expected": 0,
+    "skipped": 32,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

@@ -5,12 +5,12 @@ import { defineConfig, devices } from '@playwright/test';
  * Optimized for Replit environment with headless browsing
  */
 export default defineConfig({
-  // Test directory structure
+  // Test directory structure - point to tests in testing directory
   testDir: './tests',
   
   // Global setup and teardown
-  globalSetup: require.resolve('./global-setup.ts'),
-  globalTeardown: require.resolve('./global-teardown.ts'),
+  globalSetup: './global-setup.ts',
+  globalTeardown: './global-teardown.ts',
   
   // Run tests in files in parallel
   fullyParallel: true,
@@ -35,6 +35,9 @@ export default defineConfig({
   use: {
     // Base URL for the application
     baseURL: process.env.REPL_URL || 'http://localhost:5000',
+    
+    // Use saved authentication state
+    storageState: 'testing/auth-state.json',
     
     // Collect trace when retrying the failed test
     trace: 'on-first-retry',
@@ -62,6 +65,10 @@ export default defineConfig({
         headless: true,
         // Use system-installed Chromium
         channel: undefined,
+        // Use system Chromium in Replit
+        launchOptions: {
+          executablePath: '/nix/store/qa9cnw4v5xkxyip6mb9kxqfq1z4x2dx1-chromium-138.0.7204.100/bin/chromium',
+        }
       },
     },
     
