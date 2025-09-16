@@ -95,7 +95,7 @@ const moduleData = {
   ]
 };
 
-const categoryColors = {
+const categoryColors: Record<string, string> = {
   Finance: 'bg-red-100 text-red-800',
   System: 'bg-blue-100 text-blue-800', 
   HR: 'bg-purple-100 text-purple-800',
@@ -209,7 +209,7 @@ export function ModuleMarketplace() {
 
               <div className="flex items-center justify-between">
                 <span className={`text-xs px-2 py-1 rounded-full ${
-                  categoryColors[module.category as keyof typeof categoryColors] || 'bg-gray-100 text-gray-800'
+                  categoryColors[module.category] || 'bg-gray-100 text-gray-800'
                 }`}>
                   {module.category}
                 </span>

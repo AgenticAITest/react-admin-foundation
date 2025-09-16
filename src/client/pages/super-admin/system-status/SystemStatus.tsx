@@ -4,6 +4,13 @@ import { Button } from '@client/components/ui/button';
 import { Badge } from '@client/components/ui/badge';
 import { Activity, Database, Server, HardDrive, Gauge, FileText, Shield, Settings, RefreshCw } from 'lucide-react';
 
+// Type definitions
+interface ServerMetric {
+  usage?: number;
+  average?: number;
+  label: string;
+}
+
 // Mock data - will be replaced with real API calls later
 const systemData = {
   overview: {
@@ -213,28 +220,31 @@ export function SystemStatus() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {Object.entries(systemData.serverPerformance).map(([key, metric]) => (
-              <div key={key} className="text-center">
-                <div className="text-3xl font-bold mb-2">
-                  {key === 'load' ? metric.average : `${metric.usage}%`}
-                </div>
-                <div className="text-sm text-muted-foreground mb-3">{metric.label}</div>
-                {key !== 'load' && (
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div 
-                      className={`h-2 rounded-full ${
-                        metric.usage > 80 ? 'bg-red-500' : 
-                        metric.usage > 60 ? 'bg-yellow-500' : 'bg-green-500'
-                      }`}
-                      style={{ width: `${metric.usage}%` }}
-                    ></div>
+            {Object.entries(systemData.serverPerformance).map(([key, metric]) => {
+              const typedMetric = metric as ServerMetric;
+              return (
+                <div key={key} className="text-center">
+                  <div className="text-3xl font-bold mb-2">
+                    {key === 'load' ? typedMetric.average : `${typedMetric.usage}%`}
                   </div>
-                )}
-                {key === 'load' && (
-                  <div className="text-xs text-muted-foreground">1 min average</div>
-                )}
-              </div>
-            ))}
+                  <div className="text-sm text-muted-foreground mb-3">{typedMetric.label}</div>
+                  {key !== 'load' && typedMetric.usage && (
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div 
+                        className={`h-2 rounded-full ${
+                          typedMetric.usage > 80 ? 'bg-red-500' : 
+                          typedMetric.usage > 60 ? 'bg-yellow-500' : 'bg-green-500'
+                        }`}
+                        style={{ width: `${typedMetric.usage}%` }}
+                      ></div>
+                    </div>
+                  )}
+                  {key === 'load' && (
+                    <div className="text-xs text-muted-foreground">1 min average</div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </CardContent>
       </Card>

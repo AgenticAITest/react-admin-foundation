@@ -191,7 +191,8 @@ const data = {
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { user } = useAuth();
-  const isSuperAdmin = user?.isSuperAdmin || false;
+  // Temporary fix for isSuperAdmin property - will be updated when User type is enhanced
+  const isSuperAdmin = (user as any)?.isSuperAdmin || false;
 
   return (
     <Sidebar collapsible="offcanvas" {...props}>

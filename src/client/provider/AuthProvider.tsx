@@ -11,6 +11,7 @@ interface User {
   status: string;
   roles: string[];
   permissions: string[];
+  isSuperAdmin?: boolean;
   activeTenant: {
     id: string;
     code: string;

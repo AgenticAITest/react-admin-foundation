@@ -42,6 +42,15 @@ import FormShowcase from "./pages/console/showcase/FormShowcase";
 import RegisterTenant from "./pages/auth/RegisterTenant";
 import MasterData from "./pages/console/system/master-data/MasterData";
 
+// Super Admin pages
+import SuperAdminLayout from "./pages/super-admin/SuperAdminLayout";
+import SuperAdminDashboard from "./pages/super-admin/dashboard/SuperAdminDashboard";
+import TenantManagement from "./pages/super-admin/tenants/TenantManagement";
+import ModuleMarketplace from "./pages/super-admin/modules/ModuleMarketplace";
+import SystemStatus from "./pages/super-admin/system-status/SystemStatus";
+import AuditLogs from "./pages/super-admin/audit-logs/AuditLogs";
+import SuperAdminUsers from "./pages/super-admin/users/SuperAdminUsers";
+
 export const router = createBrowserRouter([
   {
     path: "/",
@@ -144,6 +153,30 @@ export const router = createBrowserRouter([
               { path: "master-data", Component: MasterData },
             ]
           }
+        ],
+      },
+      {
+        path: "super-admin",
+        Component: ConsoleLayout,
+        children: [
+          {
+            index: true,
+            loader: async () => {
+              return redirect("/super-admin/dashboard");
+            },
+          },
+          {
+            path: "*",
+            Component: SuperAdminLayout,
+            children: [
+              { path: "dashboard", Component: SuperAdminDashboard },
+              { path: "tenants", Component: TenantManagement },
+              { path: "modules", Component: ModuleMarketplace },
+              { path: "system-status", Component: SystemStatus },
+              { path: "audit-logs", Component: AuditLogs },
+              { path: "users", Component: SuperAdminUsers },
+            ],
+          },
         ],
       },
     ],
