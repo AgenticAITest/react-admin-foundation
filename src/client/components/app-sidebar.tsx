@@ -1,16 +1,22 @@
 import * as React from "react"
 import {
+  Activity,
   AudioWaveform,
   BookOpen,
   Bot,
+  Building2,
   Command,
+  FileText,
   Frame,
   GalleryVerticalEnd,
   Map,
+  Package,
   PieChart,
   Puzzle,
   Settings2,
+  Shield,
   SquareTerminal,
+  Users,
 } from "lucide-react"
 
 import { NavMain } from "@client/components/nav-main"
@@ -23,7 +29,9 @@ import {
   SidebarFooter,
   SidebarHeader,
   SidebarRail,
+  SidebarSeparator,
 } from "@client/components/ui/sidebar"
+import { useAuth } from "@client/provider/AuthProvider"
 import { permission } from "process"
 import { role } from "../../server/lib/db/schema/system"
 
@@ -140,17 +148,69 @@ const data = {
         },
       ],
     },
-    
+  ],
+  superAdminNav: [
+    {
+      id: "super-admin-dashboard",
+      title: "Dashboard", 
+      url: "/super-admin/dashboard",
+      icon: SquareTerminal,
+    },
+    {
+      id: "super-admin-tenants",
+      title: "Tenants",
+      url: "/super-admin/tenants", 
+      icon: Building2,
+    },
+    {
+      id: "super-admin-modules",
+      title: "Modules",
+      url: "/super-admin/modules",
+      icon: Package,
+    },
+    {
+      id: "super-admin-system-status", 
+      title: "System Status",
+      url: "/super-admin/system-status",
+      icon: Activity,
+    },
+    {
+      id: "super-admin-audit-logs",
+      title: "Audit Logs",
+      url: "/super-admin/audit-logs",
+      icon: FileText,
+    },
+    {
+      id: "super-admin-users",
+      title: "Users", 
+      url: "/super-admin/users",
+      icon: Users,
+    },
   ],
 }
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const { user } = useAuth();
+  const isSuperAdmin = user?.isSuperAdmin || false;
+
   return (
     <Sidebar collapsible="offcanvas" {...props}>
       <SidebarHeader>
         <TeamSwitcher/>
       </SidebarHeader>
       <SidebarContent>
+        {isSuperAdmin && (
+          <>
+            <div className="px-3 py-2">
+              <div className="flex items-center gap-2">
+                <Shield className="h-4 w-4 text-blue-500" />
+                <span className="text-sm font-medium text-blue-500">Super Admin Portal</span>
+              </div>
+            </div>
+            <NavMain items={data.superAdminNav} />
+            <SidebarSeparator />
+          </>
+        )}
         <NavMain items={data.navMain} />
         {/* <NavProjects projects={data.projects} /> */}
       </SidebarContent>
