@@ -117,3 +117,144 @@ All Phase 2 requirements have been validated:
 **Testing completed:** September 16, 2025  
 **Phase 2 Status:** ✅ FULLY VALIDATED  
 **Next Phase:** Ready to proceed
+
+# Phase 3 & 4 Validation Test Plan
+
+## Phase 3: Super Admin Dashboard Testing
+
+### Authentication & Authorization Tests
+
+| Test ID | Test Scenario | Expected Result | Test Command |
+|---------|---------------|-----------------|--------------|
+| P3-AUTH-01 | Access dashboard without authentication | 401 Unauthorized | `curl -X GET http://localhost:5000/api/system/tenant` |
+| P3-AUTH-02 | Access dashboard with regular user token | 403 Forbidden (requires super admin) | `curl -X GET -H "Authorization: Bearer [regular-user-token]" http://localhost:5000/api/system/tenant` |
+| P3-AUTH-03 | Access dashboard with super admin token | 200 Success with dashboard data | `curl -X GET -H "Authorization: Bearer [sysadmin-token]" http://localhost:5000/api/system/tenant` |
+| P3-AUTH-04 | Navigate to /console/super-admin without auth | Redirect to login page | Browser navigation test |
+| P3-AUTH-05 | Navigate to /console/super-admin with super admin | Dashboard loads successfully | Browser navigation test |
+
+### System Management Tests
+
+| Test ID | Test Scenario | Expected Result | Test Command |
+|---------|---------------|-----------------|--------------|
+| P3-SYS-01 | View tenant list | Returns all tenants with status | `curl -X GET -H "Authorization: Bearer [sysadmin-token]" http://localhost:5000/api/system/tenant` |
+| P3-SYS-02 | View user list | Returns all users with roles | `curl -X GET -H "Authorization: Bearer [sysadmin-token]" http://localhost:5000/api/system/user` |
+| P3-SYS-03 | View role list | Returns all roles with permissions | `curl -X GET -H "Authorization: Bearer [sysadmin-token]" http://localhost:5000/api/system/role` |
+| P3-SYS-04 | View permission list | Returns all system permissions | `curl -X GET -H "Authorization: Bearer [sysadmin-token]" http://localhost:5000/api/system/permission` |
+| P3-SYS-05 | Create new tenant | Tenant created with schema | `curl -X POST -H "Authorization: Bearer [sysadmin-token]" -H "Content-Type: application/json" -d '{"code":"test-tenant","name":"Test Tenant"}' http://localhost:5000/api/system/tenant` |
+
+### Dashboard Widget Tests
+
+| Test ID | Test Scenario | Expected Result | Browser Test |
+|---------|---------------|-----------------|--------------|
+| P3-DASH-01 | Load tenant management widget | Shows tenant count and status | Navigate to super admin dashboard |
+| P3-DASH-02 | Load user management widget | Shows user count and recent activity | Navigate to super admin dashboard |
+| P3-DASH-03 | Load module management widget | Shows installed modules status | Navigate to super admin dashboard |
+| P3-DASH-04 | Load system health widget | Shows system metrics and uptime | Navigate to super admin dashboard |
+| P3-DASH-05 | Load system metrics widget | Shows performance charts | Navigate to super admin dashboard |
+
+## Phase 4: Runtime Module Hotswap System Testing
+
+### Module Status & Discovery Tests
+
+| Test ID | Test Scenario | Expected Result | Test Command |
+|---------|---------------|-----------------|--------------|
+| P4-STAT-01 | Get module status | Returns all modules with mount status | `curl -X GET -H "Authorization: Bearer [sysadmin-token]" http://localhost:5000/api/system/modules/status` |
+| P4-STAT-02 | Rediscover modules | Scans modules directory and reports found modules | `curl -X POST -H "Authorization: Bearer [sysadmin-token]" http://localhost:5000/api/system/modules/rediscover` |
+| P4-STAT-03 | Check mounted routes | Verify modules have routes properly mounted | Check module status API response for mounted=true |
+
+### Module Export Tests
+
+| Test ID | Test Scenario | Expected Result | Test Command |
+|---------|---------------|-----------------|--------------|
+| P4-EXP-01 | Export existing module (inventory) | Returns complete module package | `curl -X GET -H "Authorization: Bearer [sysadmin-token]" http://localhost:5000/api/system/modules/export/inventory` |
+| P4-EXP-02 | Export existing module (tasks) | Returns complete module package | `curl -X GET -H "Authorization: Bearer [sysadmin-token]" http://localhost:5000/api/system/modules/export/tasks` |
+| P4-EXP-03 | Export non-existent module | Returns 404 error | `curl -X GET -H "Authorization: Bearer [sysadmin-token]" http://localhost:5000/api/system/modules/export/nonexistent` |
+| P4-EXP-04 | Verify export package structure | Package contains id, config, files, version, exportedAt | Validate JSON structure of export response |
+
+### Module Import Security Tests
+
+| Test ID | Test Scenario | Expected Result | Test Command |
+|---------|---------------|-----------------|--------------|
+| P4-SEC-01 | Import with path traversal attempt | Rejected with security error | Import package with files containing "../" paths |
+| P4-SEC-02 | Import with oversized files | Rejected with file size error | Import package with files > 10MB |
+| P4-SEC-03 | Import with dangerous file extensions | Rejected with file type error | Import package with .exe, .bat, .sh files |
+| P4-SEC-04 | Import with malicious patterns | Rejected with content validation error | Import package with scripts containing dangerous code |
+| P4-SEC-05 | Import valid module package | Successfully imports and hotswaps | Import properly formatted module package |
+
+### Module Hotswap Functionality Tests
+
+| Test ID | Test Scenario | Expected Result | Test Command |
+|---------|---------------|-----------------|--------------|
+| P4-SWAP-01 | Hotswap existing module | Module reloaded without server restart | `curl -X POST -H "Authorization: Bearer [sysadmin-token]" http://localhost:5000/api/system/modules/hotswap/inventory` |
+| P4-SWAP-02 | Hotswap with API endpoints active | Existing API calls continue to work | Make API calls during hotswap operation |
+| P4-SWAP-03 | Hotswap with invalid module | Rollback to previous version | Hotswap module with syntax errors |
+| P4-SWAP-04 | Hotswap non-existent module | Returns appropriate error | `curl -X POST -H "Authorization: Bearer [sysadmin-token]" http://localhost:5000/api/system/modules/hotswap/nonexistent` |
+
+### Zero-Downtime Deployment Tests
+
+| Test ID | Test Scenario | Expected Result | Test Command |
+|---------|---------------|-----------------|--------------|
+| P4-DOWN-01 | Concurrent API requests during hotswap | No 500 errors during swap | Load test API endpoints during hotswap |
+| P4-DOWN-02 | Database transactions during hotswap | No transaction failures | Execute CRUD operations during hotswap |
+| P4-DOWN-03 | Module validation failure | Old module remains active | Import invalid module and verify old one works |
+| P4-DOWN-04 | Route conflicts during hotswap | Proper error handling and rollback | Import module with conflicting routes |
+
+### Multi-Tenant Deployment Tests
+
+| Test ID | Test Scenario | Expected Result | Test Command |
+|---------|---------------|-----------------|--------------|
+| P4-TENANT-01 | Import module with new tables | Tables created in all tenant schemas | Verify tables exist in tenant_system and tenant_public |
+| P4-TENANT-02 | Hotswap affects all tenants | All tenants get updated module | Test module APIs with different tenant contexts |
+| P4-TENANT-03 | Tenant isolation during deployment | No cross-tenant data access | Verify tenant data remains isolated |
+
+### Business Analyst Workflow Tests
+
+| Test ID | Test Scenario | Expected Result | Integration Test |
+|---------|---------------|-----------------|------------------|
+| P4-BA-01 | Export → Modify → Import workflow | Module successfully updated | Export inventory, modify config, import back |
+| P4-BA-02 | Module versioning | Version tracking works correctly | Import module with version 1.1.0 |
+| P4-BA-03 | Configuration updates | Module settings updated without data loss | Update module configuration via import |
+| P4-BA-04 | File structure validation | Proper module structure enforced | Import module with missing required files |
+
+### Rollback & Error Recovery Tests
+
+| Test ID | Test Scenario | Expected Result | Test Command |
+|---------|---------------|-----------------|--------------|
+| P4-ROLL-01 | Cache clearing verification | Module code cache properly cleared | Verify new code executes after hotswap |
+| P4-ROLL-02 | Route unmounting/remounting | Routes properly updated | Test API endpoints before/after hotswap |
+| P4-ROLL-03 | Database schema rollback | Safe handling of schema changes | Import module with schema changes then rollback |
+| P4-ROLL-04 | Module dependency handling | Dependencies validated during import | Import module with missing dependencies |
+
+## Critical Test Scenarios
+
+### End-to-End Business Analyst Simulation
+
+| Test ID | Test Scenario | Expected Result |
+|---------|---------------|-----------------|
+| E2E-01 | **Complete BA Workflow** | Business analyst develops, exports, and deploys module without technical expertise |
+| E2E-02 | **Multi-module Environment** | Multiple modules operate independently without conflicts |
+| E2E-03 | **Production Simulation** | System handles module updates under load without service interruption |
+| E2E-04 | **Security Hardening** | All attack vectors properly blocked while maintaining functionality |
+
+### Performance & Reliability Tests
+
+| Test ID | Test Scenario | Expected Result |
+|---------|---------------|-----------------|
+| PERF-01 | **Hotswap Speed** | Module hotswap completes in <30 seconds |
+| PERF-02 | **Memory Management** | No memory leaks during repeated hotswaps |
+| PERF-03 | **Concurrent Operations** | System handles multiple simultaneous hotswaps |
+| PERF-04 | **Large Module Import** | System handles modules with 100+ files |
+
+### Compliance & Audit Tests
+
+| Test ID | Test Scenario | Expected Result |
+|---------|---------------|-----------------|
+| AUDIT-01 | **Operation Logging** | All hotswap operations properly logged |
+| AUDIT-02 | **Access Control** | Only super admins can perform hotswap operations |
+| AUDIT-03 | **Change Tracking** | Module version changes tracked and auditable |
+| AUDIT-04 | **Rollback History** | Failed operations logged with rollback details |
+
+---
+
+**Phase 3 & 4 Testing Status:** 🧪 TEST SCENARIOS DEFINED  
+**Ready for:** Comprehensive validation of Super Admin Dashboard and Runtime Module Hotswap System
