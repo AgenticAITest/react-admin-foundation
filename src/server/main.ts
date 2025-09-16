@@ -12,6 +12,8 @@ import departmentRoutes from "./routes/demo/department";
 import masterRoutes from "./routes/master";
 import { rateLimit } from 'express-rate-limit'
 import fileUpload from "express-fileupload";
+import { routeRegistry } from "./lib/modules/route-registry";
+import { moduleRegistry } from "./lib/modules/module-registry";
 
 
 const app = express();
@@ -96,6 +98,33 @@ app.use('/api/demo/department', departmentRoutes);
 
 // master data routes
 app.use('/api/master', masterRoutes);
+
+// Initialize module system
+async function initializeModuleSystem() {
+  try {
+    // Initialize RouteRegistry with the Express app
+    routeRegistry.setExpressApp(app);
+    
+    // Discover and register all modules
+    await moduleRegistry.discoverModules();
+    
+    console.log('✅ Module system initialized successfully');
+    const mountedRoutes = routeRegistry.getMountedRoutes();
+    if (mountedRoutes.length > 0) {
+      console.log(`📍 Mounted ${mountedRoutes.length} module route(s):`);
+      mountedRoutes.forEach(route => {
+        console.log(`   - ${route.moduleId}: ${route.prefix} (${route.endpoints.length} endpoints)`);
+      });
+    } else {
+      console.log('ℹ️ No modules found to mount');
+    }
+  } catch (error) {
+    console.error('❌ Failed to initialize module system:', error);
+  }
+}
+
+// Initialize module system after setting up core routes
+initializeModuleSystem();
 
 ViteExpress.listen(app, 5000, () =>
   console.log("Server is listening on port 5000..."),

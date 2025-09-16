@@ -3,6 +3,7 @@ import { tenant } from '../db/schema/system';
 import { eq } from 'drizzle-orm';
 import fs from 'fs/promises';
 import { tenantDbManager } from '../db/tenant-db';
+import { routeRegistry } from './route-registry';
 
 export interface ModuleConfig {
   id: string;
@@ -140,6 +141,8 @@ export class ModuleRegistry {
   }
 
   async checkRouteConflicts(config: ModuleConfig): Promise<void> {
+    // Enhanced route conflict checking is now handled by RouteRegistry
+    // This method is kept for backward compatibility and basic validation
     const prefix = config.apiRoutes.prefix;
     
     for (const [moduleId, existingModule] of this.modules) {
@@ -150,8 +153,22 @@ export class ModuleRegistry {
   }
 
   async registerRoutes(config: ModuleConfig): Promise<void> {
-    // Route registration will be implemented when integrating with Express
-    console.log(`Registering routes for module ${config.id} with prefix ${config.apiRoutes.prefix}`);
+    try {
+      // Use RouteRegistry to automatically mount module routes
+      await routeRegistry.mountModuleRoutes(config);
+      
+      // Validate that frontend and backend routes are synchronized
+      const syncValidation = routeRegistry.validateFrontendBackendSync(config);
+      if (!syncValidation.isValid) {
+        console.warn(`⚠️ Frontend-backend route sync issues for module '${config.id}':`);
+        syncValidation.issues.forEach(issue => console.warn(`   - ${issue}`));
+      }
+      
+      console.log(`✅ Successfully registered and mounted routes for module ${config.id}`);
+    } catch (error) {
+      console.error(`❌ Failed to register routes for module ${config.id}:`, error);
+      throw error;
+    }
   }
 
   async deployModuleToTenant(config: ModuleConfig, tenantId: string): Promise<void> {
@@ -178,6 +195,44 @@ export class ModuleRegistry {
 
   getModule(id: string): ModuleConfig | undefined {
     return this.modules.get(id);
+  }
+
+  /**
+   * Unregister a module and unmount its routes
+   */
+  async unregisterModule(moduleId: string): Promise<void> {
+    const config = this.modules.get(moduleId);
+    if (!config) {
+      throw new Error(`Module ${moduleId} not found in registry`);
+    }
+
+    try {
+      // Unmount routes
+      await routeRegistry.unmountModuleRoutes(moduleId);
+      
+      // Remove from registry
+      this.modules.delete(moduleId);
+      
+      console.log(`✅ Module ${config.name} unregistered successfully`);
+    } catch (error) {
+      console.error(`❌ Failed to unregister module ${moduleId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get route mounting status for all modules
+   */
+  getRouteMountingStatus(): Array<{ moduleId: string; name: string; mounted: boolean; prefix: string }> {
+    const mountedRoutes = routeRegistry.getMountedRoutes();
+    const mountedModuleIds = new Set(mountedRoutes.map(route => route.moduleId));
+    
+    return Array.from(this.modules.values()).map(module => ({
+      moduleId: module.id,
+      name: module.name,
+      mounted: mountedModuleIds.has(module.id),
+      prefix: module.apiRoutes.prefix
+    }));
   }
 }
 
