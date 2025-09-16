@@ -123,10 +123,10 @@ export const ${entityNamePlural}Relations = relations(${entityNamePlural}, ({ on
     routes: `
 import { Router } from 'express';
 import { asc, count, desc, eq, ilike } from 'drizzle-orm';
-import { authenticated, authorized } from '../../middleware/authMiddleware';
-import { validateData } from '../../middleware/validationMiddleware';
-import { ${entityNameCamel}Schema, ${entityNameCamel}EditSchema } from '../../schemas/${entityNameCamel}Schema';
-import { ${entityNamePlural} } from '../../lib/db/schema/${moduleName}';
+import { authenticated, authorized } from '../../../server/middleware/authMiddleware';
+import { validateData } from '../../../server/middleware/validationMiddleware';
+import { ${entityNameCamel}Schema, ${entityNameCamel}EditSchema } from '../schemas/${entityNameCamel}Schema';
+import { ${entityNamePlural} } from '../database/schema';
 
 const ${entityNameCamel}Router = Router();
 
@@ -332,6 +332,177 @@ ${entityNameCamel}Router.delete("/:id",
 );
 
 export default ${entityNameCamel}Router;`,
+
+    // Router file for automatic loading by RouteRegistry
+    routerIndex: `
+// Router entry point for module '${moduleName}'
+// This file is automatically loaded by the RouteRegistry
+export { default } from './${entityNameCamel}Router';`,
+
+    // Router file (alternative location)
+    routerFile: `
+import { Router } from 'express';
+import { asc, count, desc, eq, ilike } from 'drizzle-orm';
+import { authenticated, authorized } from '../../../server/middleware/authMiddleware';
+import { validateData } from '../../../server/middleware/validationMiddleware';
+import { ${entityNameCamel}Schema, ${entityNameCamel}EditSchema } from '../schemas/${entityNameCamel}Schema';
+import { ${entityNamePlural} } from '../database/schema';
+
+const router = Router();
+
+// All routes require authentication
+router.use(authenticated());
+
+// GET /${entityNamePlural} - List all ${entityNamePlural}
+router.get("/", 
+  authorized(['SYSADMIN', 'USER'], '${moduleName}.${entityNamePlural}.view'), 
+  async (req, res) => {
+    const pageParam = req.query.page as string | undefined;
+    const perPageParam = req.query.perPage as string | undefined;
+    const sortParam = (req.query.sort as string) || 'name';
+    const orderParam = (req.query.order as 'asc' | 'desc') || 'asc';
+    const filterParam = (req.query.filter as string) || '';
+
+    const page = pageParam ? parseInt(pageParam) : 1;
+    const perPage = perPageParam ? parseInt(perPageParam) : 10;
+    const offset = (page - 1) * perPage;
+
+    const filterCondition = filterParam
+      ? ilike(${entityNamePlural}.name, \`%\${filterParam}%\`)
+      : undefined;
+
+    let countQuery = req.db!
+      .select({ value: count() })
+      .from(${entityNamePlural});
+    if (filterCondition) {
+      countQuery = countQuery.where(filterCondition);
+    }
+    const [{ value: total }] = await countQuery;
+
+    const validSortColumns = ['name', 'createdAt', 'updatedAt', 'id'] as const;
+    const sortKey = validSortColumns.includes(sortParam as any) ? sortParam : 'name';
+    const sortColumn = ${entityNamePlural}[sortKey as keyof typeof ${entityNamePlural}];
+    let itemsQuery = req.db!
+      .select()
+      .from(${entityNamePlural});
+    if (filterCondition) {
+      itemsQuery = itemsQuery.where(filterCondition);
+    }
+    const items = await itemsQuery
+      .orderBy(orderParam === 'asc' ? asc(sortColumn) : desc(sortColumn))
+      .limit(perPage)
+      .offset(offset);
+
+    res.json({
+      items,
+      count: total,
+      page,
+      perPage,
+      sort: sortParam,
+      order: orderParam,
+      filter: filterParam
+    });
+  }
+);
+
+// POST /${entityNamePlural} - Create new ${entityName.toLowerCase()}
+router.post("/",
+  authorized(['SYSADMIN', 'USER'], '${moduleName}.${entityNamePlural}.add'),
+  validateData(${entityNameCamel}Schema),
+  async (req, res) => {
+    try {
+      const [newItem] = await req.db!
+        .insert(${entityNamePlural})
+        .values(req.body)
+        .returning();
+
+      res.status(201).json(newItem);
+    } catch (error) {
+      console.error("Error creating ${entityName.toLowerCase()}:", error);
+      res.status(500).json({ error: "Internal server error." });
+    }
+  }
+);
+
+// GET /${entityNamePlural}/:id - Get ${entityName.toLowerCase()} by ID
+router.get("/:id",
+  authorized(['SYSADMIN', 'USER'], '${moduleName}.${entityNamePlural}.view'),
+  async (req, res) => {
+    const { id } = req.params;
+
+    try {
+      const [item] = await req.db!
+        .select()
+        .from(${entityNamePlural})
+        .where(eq(${entityNamePlural}.id, id))
+        .limit(1);
+
+      if (!item) {
+        return res.status(404).json({ error: "${entityName} not found" });
+      }
+
+      res.json(item);
+    } catch (error) {
+      console.error("Error fetching ${entityName.toLowerCase()}:", error);
+      res.status(500).json({ error: "Internal server error." });
+    }
+  }
+);
+
+// PUT /${entityNamePlural}/:id - Update ${entityName.toLowerCase()}
+router.put("/:id",
+  authorized(['SYSADMIN', 'USER'], '${moduleName}.${entityNamePlural}.edit'),
+  validateData(${entityNameCamel}EditSchema),
+  async (req, res) => {
+    const { id } = req.params;
+
+    try {
+      const [updatedItem] = await req.db!
+        .update(${entityNamePlural})
+        .set({
+          ...req.body,
+          updatedAt: new Date()
+        })
+        .where(eq(${entityNamePlural}.id, id))
+        .returning();
+
+      if (!updatedItem) {
+        return res.status(404).json({ error: "${entityName} not found" });
+      }
+
+      res.json(updatedItem);
+    } catch (error) {
+      console.error("Error updating ${entityName.toLowerCase()}:", error);
+      res.status(500).json({ error: "Internal server error." });
+    }
+  }
+);
+
+// DELETE /${entityNamePlural}/:id - Delete ${entityName.toLowerCase()}
+router.delete("/:id",
+  authorized(['SYSADMIN', 'USER'], '${moduleName}.${entityNamePlural}.delete'),
+  async (req, res) => {
+    const { id } = req.params;
+
+    try {
+      const [deletedItem] = await req.db!
+        .delete(${entityNamePlural})
+        .where(eq(${entityNamePlural}.id, id))
+        .returning();
+
+      if (!deletedItem) {
+        return res.status(404).json({ error: "${entityName} not found" });
+      }
+
+      res.json({ message: "${entityName} deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting ${entityName.toLowerCase()}:", error);
+      res.status(500).json({ error: "Internal server error." });
+    }
+  }
+);
+
+export default router;`,
 
     // Frontend component using existing UI patterns
     component: `
