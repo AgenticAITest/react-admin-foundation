@@ -100,11 +100,7 @@ export class RouteRegistry {
    * Load the router file for a module
    */
   private async loadModuleRouter(moduleId: string): Promise<Router> {
-    const routerPaths = [
-      `src/modules/${moduleId}/server/routes/index.ts`,
-      `src/modules/${moduleId}/server/routes/${moduleId}.ts`,
-      `src/modules/${moduleId}/routes.ts`
-    ];
+    const routerPaths = this.getModuleRouterPaths(moduleId);
 
     for (const routerPath of routerPaths) {
       try {
@@ -122,6 +118,21 @@ export class RouteRegistry {
     }
 
     throw new Error(`No valid router file found for module '${moduleId}'. Expected files: ${routerPaths.join(', ')}`);
+  }
+
+  /**
+   * Get possible router file paths for both dev (.ts) and production (.js)
+   */
+  private getModuleRouterPaths(moduleId: string): string[] {
+    const isProduction = process.env.NODE_ENV === 'production';
+    const extension = isProduction ? '.js' : '.ts';
+    const baseDir = isProduction ? 'dist/src/modules' : 'src/modules';
+
+    return [
+      `${baseDir}/${moduleId}/server/routes/index${extension}`,
+      `${baseDir}/${moduleId}/server/routes/${moduleId}${extension}`,
+      `${baseDir}/${moduleId}/routes${extension}`
+    ];
   }
 
   /**

@@ -41,6 +41,11 @@ export class DatabaseSchemaIntegrator {
    * Integrates a generated module schema into the existing database setup
    */
   static async integrateModuleSchema(config: ModuleSchemaConfig, options?: { skipDbPush?: boolean }): Promise<void> {
+    // Prevent execution in production environment
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('🚫 Database schema integration is not allowed in production environment. This tool is for development use only.');
+    }
+    
     try {
       console.log(`🔧 Integrating database schema for module: ${config.moduleName}`);
       

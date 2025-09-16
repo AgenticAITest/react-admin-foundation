@@ -26,6 +26,12 @@ function findProjectRoot(): string {
 }
 
 async function main() {
+  // Prevent execution in production environment
+  if (process.env.NODE_ENV === 'production') {
+    console.error('🚫 Module generation is not allowed in production environment. This tool is for development use only.');
+    process.exit(1);
+  }
+
   const args = process.argv.slice(2);
   
   if (args.length < 2) {

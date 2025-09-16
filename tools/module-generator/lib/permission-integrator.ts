@@ -32,6 +32,11 @@ export class PermissionIntegrator {
    * Add module permissions to the constants file
    */
   static async addModulePermissions(moduleId: string, permissions: string[]): Promise<void> {
+    // Prevent execution in production environment
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('🚫 Permission integration is not allowed in production environment. This tool is for development use only.');
+    }
+    
     try {
       const projectRoot = this.findProjectRoot();
       const constantsPath = path.join(projectRoot, this.CONSTANTS_FILE);

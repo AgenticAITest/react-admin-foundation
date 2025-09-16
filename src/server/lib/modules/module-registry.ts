@@ -67,11 +67,12 @@ export class ModuleRegistry {
 
   async discoverModules() {
     try {
-      // Check if modules directory exists
-      const modulesDirs = await fs.readdir('src/modules').catch(() => []);
+      // Get the correct modules directory for both dev and production
+      const modulesDir = this.getModulesDirectory();
+      const modulesDirs = await fs.readdir(modulesDir).catch(() => []);
       
       for (const moduleDir of modulesDirs) {
-        const configPath = `src/modules/${moduleDir}/module.config.ts`;
+        const configPath = this.resolveModuleConfigPath(modulesDir, moduleDir);
         if (await fs.access(configPath).then(() => true).catch(() => false)) {
           try {
             const { default: config } = await import(path.resolve(configPath));
@@ -86,6 +87,24 @@ export class ModuleRegistry {
     } catch (error) {
       console.log(`ℹ️ No modules directory found, skipping module discovery`);
     }
+  }
+
+  /**
+   * Get the correct modules directory path for both dev and production
+   */
+  private getModulesDirectory(): string {
+    // In production, files are in dist/ directory
+    const isProduction = process.env.NODE_ENV === 'production';
+    return isProduction ? 'dist/src/modules' : 'src/modules';
+  }
+
+  /**
+   * Resolve module config path for both .ts (dev) and .js (production) files
+   */
+  private resolveModuleConfigPath(modulesDir: string, moduleDir: string): string {
+    const isProduction = process.env.NODE_ENV === 'production';
+    const extension = isProduction ? '.js' : '.ts';
+    return path.join(modulesDir, moduleDir, `module.config${extension}`);
   }
 
   async registerModule(config: ModuleConfig) {
