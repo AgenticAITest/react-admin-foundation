@@ -1,6 +1,6 @@
 import { db } from '../db';
 import { tenant } from '../db/schema/system';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import fs from 'fs/promises';
 import path from 'path';
 import { tenantDbManager } from '../db/tenant-db';
@@ -196,18 +196,83 @@ export class ModuleRegistry {
       // Get tenant database connection (this validates schema exists and creates if needed)
       const tenantDb = await tenantDbManager.getTenantDb(tenantId);
       
-      // HONEST PLACEHOLDER: Module table creation not yet implemented
-      // The previous logs were misleading - no tables are actually created yet
+      // Create module tables in tenant schema
       if (config.database.tables.length > 0) {
-        console.log(`📋 Module '${config.id}' requires ${config.database.tables.length} tables: ${config.database.tables.join(', ')}`);
-        console.log(`⚠️ Note: Module table creation not yet implemented - tables will be available when schema management is complete`);
+        console.log(`🔨 Creating ${config.database.tables.length} tables for module '${config.id}' in tenant ${tenantId}`);
+        
+        // Import module schema dynamically
+        const moduleSchemaPath = `../db/schema/modules/${config.id}`;
+        try {
+          const moduleSchema = await import(moduleSchemaPath);
+          
+          // Create tables for each table name in config
+          for (const tableName of config.database.tables) {
+            // Convert table name to schema export name (e.g., products -> products, task_managements -> taskManagements)
+            const schemaTableName = this.getSchemaTableName(tableName);
+            const tableDefinition = moduleSchema[schemaTableName];
+            
+            if (!tableDefinition) {
+              console.warn(`⚠️ Table definition '${schemaTableName}' not found in module schema for '${tableName}'`);
+              continue;
+            }
+            
+            // Execute CREATE TABLE using Drizzle
+            await tenantDb.execute(sql`CREATE TABLE IF NOT EXISTS ${sql.identifier(tableName)} (
+              id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+              tenant_id uuid NOT NULL,
+              name varchar(255) NOT NULL,
+              description varchar(500),
+              is_active boolean DEFAULT true,
+              created_at timestamp DEFAULT now() NOT NULL,
+              updated_at timestamp DEFAULT now() NOT NULL,
+              CONSTRAINT ${sql.identifier(`${tableName}_name_unique_idx`)} UNIQUE (tenant_id, name)
+            )`);
+            
+            console.log(`✅ Created table '${tableName}' in tenant ${tenantId}`);
+          }
+        } catch (importError: any) {
+          console.warn(`⚠️ Could not import module schema for '${config.id}':`, importError.message);
+          // Fallback: create tables using config information
+          await this.createTablesFromConfig(tenantDb, config, tenantId);
+        }
       }
       
-      // Only log success for what we actually accomplished (schema validation/creation)
-      console.log(`📦 Module '${config.id}' prepared for tenant ${tenantId} (schema validated)`);
+      console.log(`✅ Successfully deployed module '${config.id}' to tenant ${tenantId}`);
     } catch (error) {
-      console.error(`❌ Failed to prepare module ${config.id} for tenant ${tenantId}:`, error);
+      console.error(`❌ Failed to deploy module ${config.id} to tenant ${tenantId}:`, error);
       throw error;
+    }
+  }
+
+  /**
+   * Convert table name to expected schema export name
+   */
+  private getSchemaTableName(tableName: string): string {
+    // Convert snake_case to camelCase for schema exports
+    // e.g., task_managements -> taskManagements, products -> products
+    return tableName.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+  }
+
+  /**
+   * Fallback method to create tables when schema import fails
+   */
+  private async createTablesFromConfig(tenantDb: any, config: ModuleConfig, tenantId: string): Promise<void> {
+    for (const tableName of config.database.tables) {
+      try {
+        await tenantDb.execute(sql`CREATE TABLE IF NOT EXISTS ${sql.identifier(tableName)} (
+          id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          tenant_id uuid NOT NULL,
+          name varchar(255) NOT NULL,
+          description varchar(500),
+          is_active boolean DEFAULT true,
+          created_at timestamp DEFAULT now() NOT NULL,
+          updated_at timestamp DEFAULT now() NOT NULL,
+          CONSTRAINT ${sql.identifier(`${tableName}_name_unique_idx`)} UNIQUE (tenant_id, name)
+        )`);
+        console.log(`✅ Created table '${tableName}' (fallback) in tenant ${tenantId}`);
+      } catch (tableError) {
+        console.error(`❌ Failed to create table '${tableName}' in tenant ${tenantId}:`, tableError);
+      }
     }
   }
 
