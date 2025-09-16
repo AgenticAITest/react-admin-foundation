@@ -163,25 +163,26 @@ ${entityNameCamel}Router.get("/${entityNamePlural}",
       : undefined;
 
     // Get total count
-    let countQuery = req.db!
+    const [{ value: total }] = await req.db!
       .select({ value: count() })
-      .from(${entityNamePlural});
-    if (filterCondition) {
-      countQuery = countQuery.where(filterCondition);
-    }
-    const [{ value: total }] = await countQuery;
+      .from(${entityNamePlural})
+      .where(filterCondition || undefined);
 
-    // Get items with sorting
-    const validSortColumns = ['name', 'createdAt', 'updatedAt', 'id'] as const;
-    const sortKey = validSortColumns.includes(sortParam as any) ? sortParam : 'name';
-    const sortColumn = ${entityNamePlural}[sortKey as keyof typeof ${entityNamePlural}];
-    let itemsQuery = req.db!
+    // Get items with sorting - use explicit column mapping for type safety
+    const sortColumns = {
+      id: ${entityNamePlural}.id,
+      name: ${entityNamePlural}.name,
+      createdAt: ${entityNamePlural}.createdAt,
+      updatedAt: ${entityNamePlural}.updatedAt,
+    } as const;
+
+    const sortKey = sortParam as keyof typeof sortColumns;
+    const sortColumn = sortColumns[sortKey] || ${entityNamePlural}.name;
+
+    const items = await req.db!
       .select()
-      .from(${entityNamePlural});
-    if (filterCondition) {
-      itemsQuery = itemsQuery.where(filterCondition);
-    }
-    const items = await itemsQuery
+      .from(${entityNamePlural})
+      .where(filterCondition || undefined)
       .orderBy(orderParam === 'asc' ? asc(sortColumn) : desc(sortColumn))
       .limit(perPage)
       .offset(offset);
