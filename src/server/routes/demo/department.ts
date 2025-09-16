@@ -140,12 +140,12 @@ departmentRoutes.get("/", async (req, res) => {
     : eq(department.tenantId, req.user?.activeTenantId);
 
   // Get total count with filter
-  const [{ value: total }] = await db
+  const [{ value: total }] = await req.db!
     .select({ value: count() })
     .from(department)
     .where(filterCondition);
 
-  const departments = await db
+  const departments = await req.db!
     .select()
     .from(department)
     .where(filterCondition)
@@ -275,7 +275,7 @@ departmentRoutes.post("/add", validateData(departmentSchema), async (req, res) =
   }
 
   try {
-    const newDepartment = await db.insert(department).values({
+    const newDepartment = await req.db!.insert(department).values({
       id: crypto.randomUUID(),
       name,
       group,
@@ -339,7 +339,7 @@ departmentRoutes.put("/:id/edit", validateData(departmentSchema), async (req, re
   }
 
   try {
-    const updatedDepartment = await db.update(department).set({
+    const updatedDepartment = await req.db!.update(department).set({
       name,
       group,
       since: format(since, 'yyyy-MM-dd'),
@@ -393,7 +393,7 @@ departmentRoutes.delete("/:id/delete", async (req, res) => {
   const tenantId = req.user.activeTenantId;
 
   try {
-    const deletedDepartment = await db.delete(department).where(and(
+    const deletedDepartment = await req.db!.delete(department).where(and(
       eq(department.id, idParam),
       eq(department.tenantId, tenantId)
     )).returning()

@@ -129,12 +129,12 @@ optionRoutes.get("/", authorized('SYSADMIN', 'system.option.view'), async (req, 
     : eq(option.tenantId, req.user?.activeTenantId);
 
   // Get total count with filter
-  const [{ value: total }] = await db
+  const [{ value: total }] = await req.db!
     .select({ value: count() })
     .from(option)
     .where(filterCondition);
 
-  const options = await db
+  const options = await req.db!
     .select()
     .from(option)
     .where(filterCondition)
@@ -182,7 +182,7 @@ optionRoutes.get("/:id", authorized('SYSADMIN', 'system.option.view'), async (re
   const idParam = req.params.id;
 
   try {
-    const data = await db
+    const data = await req.db!
       .select()
       .from(option)
       .where(eq(option.id, idParam))
@@ -255,7 +255,7 @@ optionRoutes.post("/add", authorized('SYSADMIN', 'system.option.add'), validateD
   }
 
   try {
-    const newOption = await db.insert(option).values({
+    const newOption = await req.db!.insert(option).values({
       id: crypto.randomUUID(),
       code,
       name,
@@ -317,7 +317,7 @@ optionRoutes.put("/:id/edit", authorized('SYSADMIN', 'system.option.edit'), vali
   }
 
   try {
-    const updatedOption = await db.update(option).set({
+    const updatedOption = await req.db!.update(option).set({
       code,
       name,
       value
@@ -369,7 +369,7 @@ optionRoutes.delete("/:id/delete", authorized('SYSADMIN', 'system.option.delete'
   const tenantId = req.user.activeTenantId;
 
   try {
-    const deletedOption = await db.delete(option).where(and(
+    const deletedOption = await req.db!.delete(option).where(and(
       eq(option.id, idParam),
       eq(option.tenantId, tenantId)
     )).returning()

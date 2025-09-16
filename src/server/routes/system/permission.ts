@@ -133,13 +133,13 @@ permissionRoutes.get('/', authorized('SYSADMIN', 'system.permission.view'), asyn
       : eq(permission.tenantId, req.user?.activeTenantId);
 
   // Get total count with filter
-  const [{ value: total }] = await db
+  const [{ value: total }] = await req.db!
     .select({ value: count() })
     .from(permission)
     .where(filterCondition);
 
   // Get paginated, sorted, filtered permissions
-  const permissions = await db
+  const permissions = await req.db!
     .select()
     .from(permission)
     .where(filterCondition)
@@ -188,7 +188,7 @@ permissionRoutes.get('/:id', authorized('SYSADMIN', 'system.permission.view'), a
   const idParam = req.params.id;
 
   try {
-    const data = await db
+    const data = await req.db!
       .select()
       .from(permission)
       .where(eq(permission.id, idParam))
@@ -261,7 +261,7 @@ permissionRoutes.post('/add', authorized('SYSADMIN', 'system.permission.add'), v
   }
 
   try {
-    const newPermission = await db.insert(permission).values({
+    const newPermission = await req.db!.insert(permission).values({
       id: crypto.randomUUID(),
       code,
       name,
@@ -323,7 +323,7 @@ permissionRoutes.put('/:id/edit', authorized('SYSADMIN', 'system.permission.edit
   }
 
   try {
-    const updatedPermission = await db.update(permission).set({
+    const updatedPermission = await req.db!.update(permission).set({
       code,
       name,
       description
@@ -376,7 +376,7 @@ permissionRoutes.delete('/:id/delete', authorized('SYSADMIN', 'system.permission
   const tenantId = req.user.activeTenantId;
 
   try {
-    const deletedPermission = await db.delete(permission).where(and(
+    const deletedPermission = await req.db!.delete(permission).where(and(
       eq(permission.id, idParam),
       eq(permission.tenantId, tenantId)
     )).returning()
