@@ -8,6 +8,7 @@ import roleRoutes from "./routes/system/role";
 import tenantRoutes from "./routes/system/tenant";
 import optionRoutes from "./routes/system/option";
 import userRoutes from "./routes/system/user";
+import modulesRoutes from "./routes/system/modules";
 import departmentRoutes from "./routes/demo/department";
 import masterRoutes from "./routes/master";
 import { rateLimit } from 'express-rate-limit'
@@ -93,6 +94,7 @@ app.use('/api/system/role', roleRoutes);
 app.use('/api/system/tenant', tenantRoutes);
 app.use('/api/system/option', optionRoutes);
 app.use('/api/system/user', userRoutes);
+app.use('/api/system/modules', modulesRoutes);
 
 // demo routes
 app.use('/api/demo/department', departmentRoutes);
