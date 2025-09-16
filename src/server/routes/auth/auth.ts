@@ -573,7 +573,8 @@ authRoutes.get('/user', authenticated(), async (req, res) => {
         fullname: true,
         email: true,
         avatar: true,
-        status: true
+        status: true,
+        isSuperAdmin: true
       },
       where: eq(table.user.username, req.user?.username),
       with: {
