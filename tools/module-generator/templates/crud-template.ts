@@ -16,10 +16,10 @@ export const generateCrudModule = (options: TemplateOptions) => {
   const entityNamePlural = `${entityNameLower}s`;
 
   const modulePermissions = [
-    `${moduleName}.${entityNamePlural}.view`,
-    `${moduleName}.${entityNamePlural}.add`, 
-    `${moduleName}.${entityNamePlural}.edit`,
-    `${moduleName}.${entityNamePlural}.delete`
+    `${moduleName}.${entityNameLower}.view`,
+    `${moduleName}.${entityNameLower}.add`, 
+    `${moduleName}.${entityNameLower}.edit`,
+    `${moduleName}.${entityNameLower}.delete`
   ];
 
   return {
@@ -35,10 +35,10 @@ export const ${entityNameCamel}Module = {
   dependencies: [],
   compatibleVersions: ["1.0.0"],
   permissions: [
-    "${moduleName}.${entityNamePlural}.view",
-    "${moduleName}.${entityNamePlural}.add", 
-    "${moduleName}.${entityNamePlural}.edit",
-    "${moduleName}.${entityNamePlural}.delete"
+    "${moduleName}.${entityNameLower}.view",
+    "${moduleName}.${entityNameLower}.add", 
+    "${moduleName}.${entityNameLower}.edit",
+    "${moduleName}.${entityNameLower}.delete"
   ],
   roles: ["SYSADMIN", "USER"],
   
@@ -62,7 +62,7 @@ export const ${entityNameCamel}Module = {
         path: "/console/${moduleName}/${entityNamePlural}", 
         label: "${entityName}s", 
         icon: "Package",
-        permissions: ["${moduleName}.${entityNamePlural}.view"]
+        permissions: ["${moduleName}.${entityNameLower}.view"]
       }
     ]
   },
@@ -144,7 +144,7 @@ ${entityNameCamel}Router.use(authenticated());
  *       - bearerAuth: []
  */
 ${entityNameCamel}Router.get("/${entityNamePlural}", 
-  authorized(['SYSADMIN', 'USER'], '${moduleName}.${entityNamePlural}.view'), 
+  authorized(['SYSADMIN', 'USER'], '${moduleName}.${entityNameLower}.view'), 
   async (req, res) => {
     // Use existing pagination pattern
     const pageParam = req.query.page as string | undefined;
@@ -209,7 +209,7 @@ ${entityNameCamel}Router.get("/${entityNamePlural}",
  *       - bearerAuth: []
  */
 ${entityNameCamel}Router.post("/${entityNamePlural}",
-  authorized(['SYSADMIN', 'USER'], '${moduleName}.${entityNamePlural}.add'),
+  authorized(['SYSADMIN', 'USER'], '${moduleName}.${entityNameLower}.add'),
   validateData(${entityNameCamel}Schema),
   async (req, res) => {
     try {
@@ -237,7 +237,7 @@ ${entityNameCamel}Router.post("/${entityNamePlural}",
  *       - bearerAuth: []
  */
 ${entityNameCamel}Router.get("/${entityNamePlural}/:id",
-  authorized(['SYSADMIN', 'USER'], '${moduleName}.${entityNamePlural}.view'),
+  authorized(['SYSADMIN', 'USER'], '${moduleName}.${entityNameLower}.view'),
   async (req, res) => {
     const { id } = req.params;
 
@@ -271,7 +271,7 @@ ${entityNameCamel}Router.get("/${entityNamePlural}/:id",
  *       - bearerAuth: []
  */
 ${entityNameCamel}Router.put("/${entityNamePlural}/:id",
-  authorized(['SYSADMIN', 'USER'], '${moduleName}.${entityNamePlural}.edit'),
+  authorized(['SYSADMIN', 'USER'], '${moduleName}.${entityNameLower}.edit'),
   validateData(${entityNameCamel}EditSchema),
   async (req, res) => {
     const { id } = req.params;
@@ -309,7 +309,7 @@ ${entityNameCamel}Router.put("/${entityNamePlural}/:id",
  *       - bearerAuth: []
  */
 ${entityNameCamel}Router.delete("/${entityNamePlural}/:id",
-  authorized(['SYSADMIN', 'USER'], '${moduleName}.${entityNamePlural}.delete'),
+  authorized(['SYSADMIN', 'USER'], '${moduleName}.${entityNameLower}.delete'),
   async (req, res) => {
     const { id } = req.params;
 
@@ -355,7 +355,7 @@ router.use(authenticated());
 
 // GET /${entityNamePlural} - List all ${entityNamePlural}
 router.get("/${entityNamePlural}", 
-  authorized(['SYSADMIN', 'USER'], '${moduleName}.${entityNamePlural}.view'), 
+  authorized(['SYSADMIN', 'USER'], '${moduleName}.${entityNameLower}.view'), 
   async (req, res) => {
     const pageParam = req.query.page as string | undefined;
     const perPageParam = req.query.perPage as string | undefined;
@@ -407,7 +407,7 @@ router.get("/${entityNamePlural}",
 
 // POST /${entityNamePlural} - Create new ${entityName.toLowerCase()}
 router.post("/${entityNamePlural}",
-  authorized(['SYSADMIN', 'USER'], '${moduleName}.${entityNamePlural}.add'),
+  authorized(['SYSADMIN', 'USER'], '${moduleName}.${entityNameLower}.add'),
   validateData(${entityNameCamel}Schema),
   async (req, res) => {
     try {
@@ -426,7 +426,7 @@ router.post("/${entityNamePlural}",
 
 // GET /${entityNamePlural}/:id - Get ${entityName.toLowerCase()} by ID
 router.get("/${entityNamePlural}/:id",
-  authorized(['SYSADMIN', 'USER'], '${moduleName}.${entityNamePlural}.view'),
+  authorized(['SYSADMIN', 'USER'], '${moduleName}.${entityNameLower}.view'),
   async (req, res) => {
     const { id } = req.params;
 
@@ -451,7 +451,7 @@ router.get("/${entityNamePlural}/:id",
 
 // PUT /${entityNamePlural}/:id - Update ${entityName.toLowerCase()}
 router.put("/${entityNamePlural}/:id",
-  authorized(['SYSADMIN', 'USER'], '${moduleName}.${entityNamePlural}.edit'),
+  authorized(['SYSADMIN', 'USER'], '${moduleName}.${entityNameLower}.edit'),
   validateData(${entityNameCamel}EditSchema),
   async (req, res) => {
     const { id } = req.params;
@@ -480,7 +480,7 @@ router.put("/${entityNamePlural}/:id",
 
 // DELETE /${entityNamePlural}/:id - Delete ${entityName.toLowerCase()}
 router.delete("/${entityNamePlural}/:id",
-  authorized(['SYSADMIN', 'USER'], '${moduleName}.${entityNamePlural}.delete'),
+  authorized(['SYSADMIN', 'USER'], '${moduleName}.${entityNameLower}.delete'),
   async (req, res) => {
     const { id } = req.params;
 
@@ -545,11 +545,11 @@ const ${entityName}sPage = () => {
   ];
 
   return (
-    <Authorized permissions={["${moduleName}.${entityNamePlural}.view"]}>
+    <Authorized permissions={["${moduleName}.${entityNameLower}.view"]}>
       <div className="p-6">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold">${entityName}s</h1>
-          <Authorized permissions={["${moduleName}.${entityNamePlural}.add"]}>
+          <Authorized permissions={["${moduleName}.${entityNameLower}.add"]}>
             <Button>
               <Plus className="h-4 w-4 mr-2" />
               Add ${entityName}
