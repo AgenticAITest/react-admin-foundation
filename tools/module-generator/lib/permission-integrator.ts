@@ -13,11 +13,28 @@ export class PermissionIntegrator {
   private static readonly CONSTANTS_FILE = 'src/server/lib/constants/permissions.ts';
   
   /**
+   * Find the project root directory by looking for package.json
+   */
+  private static findProjectRoot(): string {
+    let currentDir = process.cwd();
+    
+    while (currentDir !== path.dirname(currentDir)) {
+      if (fs.existsSync(path.join(currentDir, 'package.json'))) {
+        return currentDir;
+      }
+      currentDir = path.dirname(currentDir);
+    }
+    
+    throw new Error('Could not find project root (package.json not found)');
+  }
+  
+  /**
    * Add module permissions to the constants file
    */
   static async addModulePermissions(moduleId: string, permissions: string[]): Promise<void> {
     try {
-      const constantsPath = path.resolve(this.CONSTANTS_FILE);
+      const projectRoot = this.findProjectRoot();
+      const constantsPath = path.join(projectRoot, this.CONSTANTS_FILE);
       let content = fs.readFileSync(constantsPath, 'utf-8');
       
       // Find the MODULE_PERMISSIONS object

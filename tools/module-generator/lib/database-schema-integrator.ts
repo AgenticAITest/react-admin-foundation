@@ -40,7 +40,7 @@ export class DatabaseSchemaIntegrator {
   /**
    * Integrates a generated module schema into the existing database setup
    */
-  static async integrateModuleSchema(config: ModuleSchemaConfig): Promise<void> {
+  static async integrateModuleSchema(config: ModuleSchemaConfig, options?: { skipDbPush?: boolean }): Promise<void> {
     try {
       console.log(`🔧 Integrating database schema for module: ${config.moduleName}`);
       
@@ -53,8 +53,12 @@ export class DatabaseSchemaIntegrator {
       // 3. Update database index to include module schemas
       await this.updateDatabaseIndex();
       
-      // 4. Run database push to create tables
-      await this.runDatabasePush();
+      // 4. Run database push to create tables (unless skipped)
+      if (!options?.skipDbPush) {
+        await this.runDatabasePush();
+      } else {
+        console.log(`⏭️  Skipping database push (will need to run 'npm run db:push' manually later)`);
+      }
       
       console.log(`✅ Database schema integration completed for module: ${config.moduleName}`);
     } catch (error) {

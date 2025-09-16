@@ -126,7 +126,7 @@ import { asc, count, desc, eq, ilike } from 'drizzle-orm';
 import { authenticated, authorized } from '../../../../server/middleware/authMiddleware';
 import { validateData } from '../../../../server/middleware/validationMiddleware';
 import { ${entityNameCamel}Schema, ${entityNameCamel}EditSchema } from '../schemas/${entityNameCamel}Schema';
-import { ${entityNamePlural} } from '../database/schema';
+import { ${entityNamePlural} } from '../../../../server/lib/db/schema/modules/${moduleName}';
 
 const ${entityNameCamel}Router = Router();
 
@@ -346,7 +346,7 @@ import { asc, count, desc, eq, ilike } from 'drizzle-orm';
 import { authenticated, authorized } from '../../../../server/middleware/authMiddleware';
 import { validateData } from '../../../../server/middleware/validationMiddleware';
 import { ${entityNameCamel}Schema, ${entityNameCamel}EditSchema } from '../schemas/${entityNameCamel}Schema';
-import { ${entityNamePlural} } from '../database/schema';
+import { ${entityNamePlural} } from '../../../../server/lib/db/schema/modules/${moduleName}';
 
 const router = Router();
 
@@ -507,9 +507,9 @@ export default router;`,
     // Frontend component using existing UI patterns
     component: `
 import React from 'react';
-import { DataPagination } from '../../../../components/console/DataPagination';
-import Authorized from '../../../../components/auth/Authorized';
-import { Button } from '../../../../components/ui/button';
+import { DataPagination } from '../../../../client/components/console/DataPagination';
+import Authorized from '../../../../client/components/auth/Authorized';
+import { Button } from '../../../../client/components/ui/button';
 import { Plus } from 'lucide-react';
 
 const ${entityName}sPage = () => {
@@ -577,7 +577,7 @@ import { z } from 'zod';
 export const ${entityNameCamel}Schema = z.object({
   name: z.string().min(1, "Name is required").max(255),
   description: z.string().max(500).optional(),
-  ${fields.map(field => {
+  ${fields.filter(field => !['name', 'description', 'isActive', 'createdAt', 'updatedAt', 'id'].includes(field.name)).map(field => {
     switch (field.type) {
       case 'string':
         return `${field.name}: z.string()${field.required ? '' : '.optional()'}${field.name === 'email' ? '.email()' : ''},`;
@@ -635,7 +635,7 @@ export const generateCrudModuleWithIntegration = async (options: TemplateOptions
     }
   }
 
-  // Automatically integrate database schema
+  // Automatically integrate database schema (skip db:push to avoid timeouts)
   try {
     await DatabaseSchemaIntegrator.integrateModuleSchema({
       moduleId: options.moduleName,
@@ -644,7 +644,7 @@ export const generateCrudModuleWithIntegration = async (options: TemplateOptions
       entityNamePlural: options.entityName.toLowerCase() + 's',
       entityNameCamel: options.entityName.charAt(0).toLowerCase() + options.entityName.slice(1),
       fields: options.fields || []
-    });
+    }, { skipDbPush: true });
     
     console.log(`✅ Module '${moduleConfig.metadata.moduleId}' database schema integrated`);
   } catch (error) {

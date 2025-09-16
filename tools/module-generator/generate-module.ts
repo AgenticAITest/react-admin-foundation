@@ -6,7 +6,24 @@
 
 import { generateCrudModuleWithIntegration } from './templates/crud-template';
 import { promises as fs } from 'fs';
+import { existsSync } from 'fs';
 import path from 'path';
+
+/**
+ * Find the project root directory by looking for package.json
+ */
+function findProjectRoot(): string {
+  let currentDir = process.cwd();
+  
+  while (currentDir !== path.dirname(currentDir)) {
+    if (existsSync(path.join(currentDir, 'package.json'))) {
+      return currentDir;
+    }
+    currentDir = path.dirname(currentDir);
+  }
+  
+  throw new Error('Could not find project root (package.json not found)');
+}
 
 async function main() {
   const args = process.argv.slice(2);
@@ -31,8 +48,9 @@ async function main() {
       ]
     });
     
-    // Create module directory structure
-    const moduleDir = path.join('src', 'modules', moduleName);
+    // Create module directory structure (relative to project root)
+    const projectRoot = findProjectRoot();
+    const moduleDir = path.join(projectRoot, 'src', 'modules', moduleName);
     const entityNameLower = entityName.toLowerCase();
     const entityNameCamel = entityName.charAt(0).toLowerCase() + entityName.slice(1);
     
@@ -52,7 +70,7 @@ async function main() {
         description: 'Module configuration'
       },
       {
-        path: path.join(moduleDir, 'server', 'routes', `${entityNameCamel}Routes.ts`),
+        path: path.join(moduleDir, 'server', 'routes', `${moduleName}.ts`),
         content: moduleConfig.routerFile,
         description: 'API routes'
       },

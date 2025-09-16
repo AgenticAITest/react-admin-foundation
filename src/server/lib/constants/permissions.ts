@@ -55,6 +55,27 @@ export const MODULE_PERMISSIONS: Record<string, string[]> = {
     'master.package-types.manage'
   ]
   // Generated module permissions will be added here automatically
+,
+  'testmodule2': [
+    'testmodule2.testentity2.view',
+    'testmodule2.testentity2.add',
+    'testmodule2.testentity2.edit',
+    'testmodule2.testentity2.delete'
+  ]
+,
+  'testmodule3': [
+    'testmodule3.testentity3.view',
+    'testmodule3.testentity3.add',
+    'testmodule3.testentity3.edit',
+    'testmodule3.testentity3.delete'
+  ]
+,
+  'inventory': [
+    'inventory.product.view',
+    'inventory.product.add',
+    'inventory.product.edit',
+    'inventory.product.delete'
+  ]
 };
 
 // Get all module permissions as flat array
