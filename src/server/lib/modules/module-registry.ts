@@ -193,18 +193,20 @@ export class ModuleRegistry {
 
   async deployModuleToTenant(config: ModuleConfig, tenantId: string): Promise<void> {
     try {
-      // Get tenant database connection
+      // Get tenant database connection (this validates schema exists and creates if needed)
       const tenantDb = await tenantDbManager.getTenantDb(tenantId);
       
-      // Create module tables in tenant schema (stub implementation)
-      for (const tableName of config.database.tables) {
-        console.log(`Creating table ${tableName} for module ${config.id} in tenant ${tenantId}`);
-        // Table creation logic will be implemented in later phases
+      // HONEST PLACEHOLDER: Module table creation not yet implemented
+      // The previous logs were misleading - no tables are actually created yet
+      if (config.database.tables.length > 0) {
+        console.log(`📋 Module '${config.id}' requires ${config.database.tables.length} tables: ${config.database.tables.join(', ')}`);
+        console.log(`⚠️ Note: Module table creation not yet implemented - tables will be available when schema management is complete`);
       }
       
-      console.log(`✅ Deployed module ${config.id} to tenant ${tenantId}`);
+      // Only log success for what we actually accomplished (schema validation/creation)
+      console.log(`📦 Module '${config.id}' prepared for tenant ${tenantId} (schema validated)`);
     } catch (error) {
-      console.error(`❌ Failed to deploy module ${config.id} to tenant ${tenantId}:`, error);
+      console.error(`❌ Failed to prepare module ${config.id} for tenant ${tenantId}:`, error);
       throw error;
     }
   }

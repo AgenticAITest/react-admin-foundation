@@ -14,6 +14,7 @@ import { rateLimit } from 'express-rate-limit'
 import fileUpload from "express-fileupload";
 import { routeRegistry } from "./lib/modules/route-registry";
 import { moduleRegistry } from "./lib/modules/module-registry";
+import { tenantDbManager } from "./lib/db/tenant-db";
 
 
 const app = express();
@@ -102,6 +103,9 @@ app.use('/api/master', masterRoutes);
 // Initialize module system
 async function initializeModuleSystem() {
   try {
+    // STARTUP VALIDATION: Ensure all tenant schemas exist before initializing modules
+    await tenantDbManager.validateAllTenantSchemasOnStartup();
+    
     // Initialize RouteRegistry with the Express app
     routeRegistry.setExpressApp(app);
     

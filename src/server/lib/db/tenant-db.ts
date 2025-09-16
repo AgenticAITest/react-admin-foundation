@@ -40,6 +40,14 @@ export class TenantDatabaseManager {
         throw new Error(`Invalid schema name: ${schemaName}`);
       }
       
+      // CRITICAL FIX: Implement lazy schema provisioning
+      // Check if schema exists, create it if it doesn't
+      const schemaExists = await this.validateTenantSchema(schemaName);
+      if (!schemaExists) {
+        console.log(`🚀 Schema ${schemaName} doesn't exist, creating it for tenant ${tenantInfo.name}`);
+        await this.createTenantSchema(tenantId, schemaName);
+      }
+      
       const connectionString = process.env.DATABASE_URL;
       if (!connectionString) {
         throw new Error('DATABASE_URL environment variable is not set');
@@ -54,7 +62,7 @@ export class TenantDatabaseManager {
         onnotice: () => {}, // Suppress notices
       });
       
-      // Set search path using safe configuration
+      // Set search path using safe configuration (schema now guaranteed to exist)
       await client`SELECT set_config('search_path', ${schemaName + ',public'}, false)`;
       
       // Create Drizzle connection
@@ -346,6 +354,39 @@ export class TenantDatabaseManager {
       .select()
       .from(tenant)
       .where(eq(tenant.status, 'active'));
+  }
+
+  /**
+   * Startup validation: Ensure all active tenant schemas exist
+   * This runs during server startup to validate database integrity
+   */
+  async validateAllTenantSchemasOnStartup() {
+    console.log('🔍 Validating tenant schemas on startup...');
+    
+    try {
+      const activeTenants = await this.getActiveTenants();
+      const validationResults = [];
+      
+      for (const tenantRecord of activeTenants) {
+        const schemaExists = await this.validateTenantSchema(tenantRecord.schemaName);
+        
+        if (!schemaExists) {
+          console.log(`⚠️ Schema missing for tenant '${tenantRecord.name}': ${tenantRecord.schemaName}`);
+          console.log(`🚀 Creating missing schema for tenant: ${tenantRecord.name}`);
+          await this.createTenantSchema(tenantRecord.id, tenantRecord.schemaName);
+          validationResults.push({ tenant: tenantRecord.name, schema: tenantRecord.schemaName, status: 'created' });
+        } else {
+          console.log(`✅ Schema exists for tenant '${tenantRecord.name}': ${tenantRecord.schemaName}`);
+          validationResults.push({ tenant: tenantRecord.name, schema: tenantRecord.schemaName, status: 'exists' });
+        }
+      }
+      
+      console.log('✅ Tenant schema validation completed');
+      return validationResults;
+    } catch (error) {
+      console.error('❌ Failed to validate tenant schemas on startup:', error);
+      throw error;
+    }
   }
 
   /**

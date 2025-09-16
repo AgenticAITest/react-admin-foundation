@@ -17,7 +17,7 @@ async function seed() {
       code: "SYSTEM", 
       name: "System", 
       description: "System Tenant",
-      schemaName: "system_tenant",
+      schemaName: "tenant_system",
       status: "active"
     },
     { 
@@ -25,7 +25,7 @@ async function seed() {
       code: "PUBLIC", 
       name: "Public", 
       description: "Public Tenant",
-      schemaName: "public_tenant", 
+      schemaName: "tenant_public", 
       status: "active"
     }
   ]);
