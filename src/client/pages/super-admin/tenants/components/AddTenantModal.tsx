@@ -30,9 +30,12 @@ const createTenantSchema = z.object({
   // Tenant registration details (mandatory)
   name: z.string().min(2, 'Tenant name must be at least 2 characters'),
   domain: z.string()
-    .min(2, 'Domain must be at least 2 characters')
-    .regex(/^[a-z0-9-]+$/, 'Domain must contain only lowercase letters, numbers, and hyphens')
-    .refine(val => !val.startsWith('-') && !val.endsWith('-'), 'Domain cannot start or end with a hyphen'),
+    .min(4, 'Domain must be at least 4 characters')
+    .max(253, 'Domain must be less than 253 characters')
+    .regex(/^[a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?)*$/, 'Domain must be in full format (e.g., techcorp.com)')
+    .refine(val => val.includes('.') && val.split('.').length >= 2, 'Domain must include TLD (e.g., .com, .co.uk)')
+    .refine(val => !val.includes('--'), 'Domain cannot contain consecutive hyphens')
+    .refine(val => !val.includes('..'), 'Domain cannot contain consecutive dots'),
   
   // Tenant admin user details (mandatory)
   adminUsername: z.string().min(3, 'Username must be at least 3 characters'),
@@ -165,17 +168,20 @@ export default function AddTenantModal({ open, onOpenChange, onSuccess }: AddTen
                       <FormLabel>Domain *</FormLabel>
                       <FormControl>
                         <Input 
-                          placeholder="Enter domain (e.g., acme-corp)" 
+                          placeholder="Enter domain (e.g., techcorp.com)" 
                           {...field}
                           onChange={(e) => {
-                            const value = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '');
+                            const value = e.target.value.toLowerCase().replace(/[^a-z0-9.-]/g, '');
                             field.onChange(value);
                           }}
                         />
                       </FormControl>
                       <FormMessage />
                       <p className="text-xs text-muted-foreground">
-                        Schema will be created as: tenant_{field.value || 'domain'}
+                        Schema will be created as: tenant_{field.value?.replace(/[^a-z0-9]/g, '_') || 'domain_com'}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Only lowercase letters, numbers, dots, and hyphens allowed
                       </p>
                     </FormItem>
                   )}
