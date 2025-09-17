@@ -60,6 +60,13 @@ const loginRateLimiter = rateLimit({
  *         description: Invalid request body
  */
 authRoutes.post('/login', validateData(userLoginSchema), async (req, res) => {
+  console.log('🔴 LOGIN REQUEST DEBUG:');
+  console.log('- Method:', req.method);
+  console.log('- URL:', req.url);
+  console.log('- Headers:', JSON.stringify(req.headers, null, 2));
+  console.log('- Body:', JSON.stringify(req.body, null, 2));
+  console.log('- Query:', JSON.stringify(req.query, null, 2));
+  
   const { username: loginInput, password } = req.body;
   
   try {
