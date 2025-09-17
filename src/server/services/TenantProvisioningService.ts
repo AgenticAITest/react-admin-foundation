@@ -353,6 +353,7 @@ export class TenantProvisioningService {
       { code: 'integrations.manage', name: 'Manage Integrations', description: 'Can create/modify integrations' }
     ];
 
+    // Insert permissions into the permissions table
     for (const permission of permissionInserts) {
       await tx.execute(sql`
         INSERT INTO ${sql.identifier(schemaName)}.permissions (id, code, name, description)
@@ -364,7 +365,8 @@ export class TenantProvisioningService {
     await tx.execute(sql`
       INSERT INTO ${sql.identifier(schemaName)}.role_permissions (role_id, permission_id)
       SELECT r.id, p.id 
-      FROM ${sql.identifier(schemaName)}.roles r, ${sql.identifier(schemaName)}.permissions p 
+      FROM ${sql.identifier(schemaName)}.roles r
+      CROSS JOIN ${sql.identifier(schemaName)}.permissions p 
       WHERE r.code = 'ADMIN'
     `);
   }
@@ -376,8 +378,8 @@ export class TenantProvisioningService {
     // Hash password using existing pattern (same as auth.ts)
     const passwordHash = await bcrypt.hash(data.adminPassword, 10);
     
-    // Insert tenant admin user
-    const [userResult] = await tx.execute(sql`
+    // Insert tenant admin user and get the generated data
+    const userResults = await tx.execute(sql`
       INSERT INTO ${sql.identifier(schemaName)}.users 
       (id, username, password_hash, email, fullname, status)
       VALUES (
@@ -391,6 +393,8 @@ export class TenantProvisioningService {
       RETURNING id, username, email, fullname
     `);
     
+    const newUser = userResults[0];
+    
     // Assign ADMIN role to tenant admin user
     await tx.execute(sql`
       INSERT INTO ${sql.identifier(schemaName)}.user_roles (user_id, role_id)
@@ -400,10 +404,10 @@ export class TenantProvisioningService {
     `);
 
     return {
-      id: userResult.id,
-      username: data.adminUsername,
-      email: data.adminEmail,
-      fullname: data.adminFullName
+      id: newUser.id,
+      username: newUser.username,
+      email: newUser.email,
+      fullname: newUser.fullname
     };
   }
 
