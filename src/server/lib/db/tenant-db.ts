@@ -79,6 +79,16 @@ export class TenantDatabaseManager {
   }
 
   /**
+   * Get tenant postgres client for raw SQL queries
+   */
+  async getTenantClient(tenantId: string): Promise<postgres.Sql> {
+    if (!this.connections.has(tenantId)) {
+      await this.getTenantDb(tenantId);
+    }
+    return this.connections.get(tenantId)!.client;
+  }
+
+  /**
    * Get tenant information by ID
    */
   async getTenant(tenantId: string) {

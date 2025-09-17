@@ -66,30 +66,52 @@ authRoutes.post('/login', loginRateLimiter, validateData(userLoginSchema), async
     // Parse login input - handles both sysadmin and username@domain.com formats
     const { username, domain } = parseLoginInput(loginInput);
     
+    let user: any = null;
     let lookupUsername: string;
     
     if (domain === null) {
-      // System user (sysadmin) - use as-is
+      // System user (sysadmin) - lookup in system table
       lookupUsername = username;
+      
+      const results = await db.select().from(table.user).where(
+        and(
+          eq(table.user.username, lookupUsername),
+          eq(table.user.status, 'active')
+        ));
+      
+      user = results.at(0);
     } else {
-      // Tenant user - lookup tenant by domain and convert to stored format
+      // Tenant user - lookup tenant by domain and search in tenant schema
       const tenant = await findTenantByDomain(domain);
       if (!tenant) {
         return res.status(400).json({ message: 'Invalid credentials' });
       }
       
-      // Convert to stored username format (username@TENANTCODE)
-      lookupUsername = buildStoredUsername(username, tenant.code);
+      // Get tenant-specific postgres client
+      const { TenantDatabaseManager } = await import('src/server/lib/db/tenant-db');
+      const manager = TenantDatabaseManager.getInstance();
+      const client = await manager.getTenantClient(tenant.id);
+      
+      // Query tenant schema for user (search_path is set to tenant schema)
+      const results = await client`
+        SELECT id, username, password_hash, fullname, email, status 
+        FROM users 
+        WHERE username = ${username} AND status = 'active' 
+        LIMIT 1
+      ` as Array<{ id: string; username: string; password_hash: string; fullname: string; email: string; status: 'active'|'inactive' }>;
+      
+      if (results.length > 0) {
+        const row = results[0];
+        // Map database fields to expected format
+        user = {
+          ...row,
+          passwordHash: row.password_hash, // Map snake_case to camelCase
+          tenant_id: tenant.id,
+          tenant_code: tenant.code
+        };
+      }
     }
 
-    // Find user with the appropriate username format
-    const results = await db.select().from(table.user).where(
-      and(
-        eq(table.user.username, lookupUsername),
-        eq(table.user.status, 'active')
-      ));
-
-    const user = results.at(0);
     if (!user) {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
@@ -100,9 +122,13 @@ authRoutes.post('/login', loginRateLimiter, validateData(userLoginSchema), async
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
-    // Create a JWT (using stored username format for consistency)
-    const accessToken = jwt.sign({ username: user.username }, ACCESS_TOKEN_SECRET, { expiresIn: '24h' });
-    const refreshToken = jwt.sign({ username: user.username }, REFRESH_TOKEN_SECRET, { expiresIn: '48h' });
+    // Create a JWT with appropriate user info
+    const tokenPayload = domain === null 
+      ? { username: user.username } // System user
+      : { username: user.username, tenant_id: user.tenant_id, tenant_code: user.tenant_code }; // Tenant user
+      
+    const accessToken = jwt.sign(tokenPayload, ACCESS_TOKEN_SECRET, { expiresIn: '24h' });
+    const refreshToken = jwt.sign(tokenPayload, REFRESH_TOKEN_SECRET, { expiresIn: '48h' });
 
     res.json({ accessToken, refreshToken });
 
