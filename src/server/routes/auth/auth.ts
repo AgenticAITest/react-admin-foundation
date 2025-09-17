@@ -61,7 +61,7 @@ const loginRateLimiter = rateLimit({
  */
 authRoutes.post('/login', loginRateLimiter, validateData(userLoginSchema), async (req, res) => {
   const { username: loginInput, password } = req.body;
-
+  
   try {
     // Parse login input - handles both sysadmin and username@domain.com formats
     const { username, domain } = parseLoginInput(loginInput);
