@@ -69,9 +69,20 @@ router.post("/products",
   validateData(productSchema),
   async (req, res) => {
     try {
+      const { name, description } = req.body;
+      const tenantId = req.user?.activeTenantId;
+
+      if (!tenantId) {
+        return res.status(400).json({ error: 'No active tenant' });
+      }
+
       const [newItem] = await req.db!
         .insert(products)
-        .values(req.body)
+        .values({
+          name,
+          description,
+          tenantId,
+        })
         .returning();
 
       res.status(201).json(newItem);
