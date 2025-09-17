@@ -21,10 +21,10 @@ const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 
 const authRoutes = Router();
 
-// Login-specific rate limiter - more restrictive for authentication
+// Login-specific rate limiter - generous limits for development
 const loginRateLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  limit: 10, // Limit each IP to 10 login attempts per window
+  windowMs: 10 * 60 * 1000, // 10 minutes
+  limit: 10000, // Limit each IP to 10000 login attempts per window
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   message: { message: 'Too many login attempts, please try again later.' },
