@@ -331,12 +331,12 @@ SELECT r.id, p.id
 FROM tenant_acme_corp.roles r, tenant_acme_corp.permissions p 
 WHERE r.code = 'ADMIN';
 
--- Create tenant admin user
+-- Create tenant admin user (password will be hashed using bcrypt.hash(password, 10))
 INSERT INTO tenant_acme_corp.users (id, username, password_hash, email, fullname, status)
 VALUES (
   gen_random_uuid(),
   'admin',
-  <hashed_password>,
+  <bcrypt_hashed_password>,
   'admin@acme-corp.com',
   'John Smith',
   'active'
@@ -450,6 +450,40 @@ export class TenantProvisioningService {
         ${data.language || 'en'}
       )
     `);
+  }
+
+  private async createTenantAdminUser(tx: Transaction, schemaName: string, data: CreateTenantRequest) {
+    // Hash password using existing pattern (same as auth.ts)
+    const passwordHash = await bcrypt.hash(data.adminPassword, 10);
+    
+    // Insert tenant admin user
+    await tx.execute(sql`
+      INSERT INTO ${sql.identifier(schemaName)}.users 
+      (id, username, password_hash, email, fullname, status)
+      VALUES (
+        gen_random_uuid(),
+        ${data.adminUsername},
+        ${passwordHash},
+        ${data.adminEmail},
+        ${data.adminFullName},
+        'active'
+      )
+    `);
+    
+    // Assign ADMIN role to tenant admin user
+    await tx.execute(sql`
+      INSERT INTO ${sql.identifier(schemaName)}.user_roles (user_id, role_id)
+      SELECT u.id, r.id
+      FROM ${sql.identifier(schemaName)}.users u, ${sql.identifier(schemaName)}.roles r
+      WHERE u.username = ${data.adminUsername} AND r.code = 'ADMIN'
+    `);
+
+    return {
+      id: 'generated-user-id',
+      username: data.adminUsername,
+      email: data.adminEmail,
+      fullname: data.adminFullName
+    };
   }
 
   // ... other methods
@@ -957,7 +991,7 @@ src/
 ## 🚀 Deployment Considerations
 
 ### Security
-- Hash passwords with bcrypt (salt rounds: 12)
+- Hash passwords with bcrypt using existing pattern: `bcrypt.hash(password, 10)` (consistent with auth.ts)
 - Validate all inputs server-side
 - Prevent SQL injection in dynamic schema creation
 - Rate limiting on tenant creation endpoint
