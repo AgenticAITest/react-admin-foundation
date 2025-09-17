@@ -227,9 +227,12 @@ authRoutes.post('/register-tenant', validateData(tenantRegistrationSchema), asyn
 
       // insert new tenant
       const newTenantCode = activeTenantCode;
-      const newTenant = await tx.insert(table.tenant).values(
-        {id: crypto.randomUUID(), code : newTenantCode, name : activeTenantName}
-      ).returning().then((rows) => rows[0]);
+      const newTenant = await tx.insert(table.tenant).values({
+        code: newTenantCode, 
+        name: activeTenantName,
+        domain: newTenantCode.toLowerCase(), // Use code as domain for backward compatibility
+        schemaName: `tenant_${newTenantCode.toLowerCase().replace(/[^a-z0-9]/g, '_')}`
+      }).returning().then((rows) => rows[0]);
 
       // insert sysadmin role for the new tenant
       const newAdminRole = await tx.insert(table.role).values({
