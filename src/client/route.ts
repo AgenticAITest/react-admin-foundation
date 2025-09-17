@@ -157,7 +157,7 @@ export const router = createBrowserRouter([
       },
       {
         path: "super-admin",
-        Component: ConsoleLayout,
+        Component: SuperAdminLayout,
         children: [
           {
             index: true,
@@ -165,18 +165,12 @@ export const router = createBrowserRouter([
               return redirect("/super-admin/dashboard");
             },
           },
-          {
-            path: "*",
-            Component: SuperAdminLayout,
-            children: [
-              { path: "dashboard", Component: SuperAdminDashboard },
-              { path: "tenants", Component: TenantManagement },
-              { path: "modules", Component: ModuleMarketplace },
-              { path: "system-status", Component: SystemStatus },
-              { path: "audit-logs", Component: AuditLogs },
-              { path: "users", Component: SuperAdminUsers },
-            ],
-          },
+          { path: "dashboard", Component: SuperAdminDashboard },
+          { path: "tenants", Component: TenantManagement },
+          { path: "modules", Component: ModuleMarketplace },
+          { path: "system-status", Component: SystemStatus },
+          { path: "audit-logs", Component: AuditLogs },
+          { path: "users", Component: SuperAdminUsers },
         ],
       },
     ],
