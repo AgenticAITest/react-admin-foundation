@@ -9,6 +9,7 @@ import { sendResetEmail } from 'src/server/lib/email';
 import { authenticated, DecodedToken } from 'src/server/middleware/authMiddleware';
 import { validateData } from 'src/server/middleware/validationMiddleware';
 import { tenantCodeRegistrationValidationSchema, tenantRegistrationSchema, userForgetPasswordSchema, userLoginSchema, usernameValidationSchema, userRegistrationSchema, userResetPasswordSchema } from 'src/server/schemas/userSchema';
+import { parseLoginInput, findTenantByDomain, buildStoredUsername } from 'src/server/lib/auth/login-parser';
 
 
 
@@ -48,31 +49,56 @@ const authRoutes = Router();
  *         description: Invalid request body
  */
 authRoutes.post('/login', validateData(userLoginSchema), async (req, res) => {
-  const { username, password } = req.body;
+  const { username: loginInput, password } = req.body;
 
-  const results = await db.select().from(table.user).where(
-    and(
-      eq(table.user.username, username),
-      eq(table.user.status, 'active')
-    ));
+  try {
+    // Parse login input - handles both sysadmin and username@domain.com formats
+    const { username, domain } = parseLoginInput(loginInput);
+    
+    let lookupUsername: string;
+    
+    if (domain === null) {
+      // System user (sysadmin) - use as-is
+      lookupUsername = username;
+    } else {
+      // Tenant user - lookup tenant by domain and convert to stored format
+      const tenant = await findTenantByDomain(domain);
+      if (!tenant) {
+        return res.status(400).json({ message: 'Invalid credentials' });
+      }
+      
+      // Convert to stored username format (username@TENANTCODE)
+      lookupUsername = buildStoredUsername(username, tenant.code);
+    }
 
-  const user = results.at(0);
-  if (!user) {
+    // Find user with the appropriate username format
+    const results = await db.select().from(table.user).where(
+      and(
+        eq(table.user.username, lookupUsername),
+        eq(table.user.status, 'active')
+      ));
+
+    const user = results.at(0);
+    if (!user) {
+      return res.status(400).json({ message: 'Invalid credentials' });
+    }
+
+    // Check the password
+    const isMatch = await bcrypt.compare(password, user.passwordHash);
+    if (!isMatch) {
+      return res.status(400).json({ message: 'Invalid credentials' });
+    }
+
+    // Create a JWT (using stored username format for consistency)
+    const accessToken = jwt.sign({ username: user.username }, ACCESS_TOKEN_SECRET, { expiresIn: '24h' });
+    const refreshToken = jwt.sign({ username: user.username }, REFRESH_TOKEN_SECRET, { expiresIn: '48h' });
+
+    res.json({ accessToken, refreshToken });
+
+  } catch (error) {
+    // Always return generic error message for security (prevent enumeration)
     return res.status(400).json({ message: 'Invalid credentials' });
   }
-
-  // Check the password
-  const isMatch = await bcrypt.compare(password, user.passwordHash);
-  if (!isMatch) {
-    return res.status(400).json({ message: 'Invalid credentials' });
-  }
-
-  // Create a JWT
-  const accessToken = jwt.sign({ username: user.username }, ACCESS_TOKEN_SECRET, { expiresIn: '24h' });
-  const refreshToken = jwt.sign({ username: user.username }, REFRESH_TOKEN_SECRET, { expiresIn: '48h' });
-
-  res.json({ accessToken, refreshToken });
-
 });
 
 /**
