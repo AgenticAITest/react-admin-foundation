@@ -31,13 +31,17 @@ export const generateSchemaName = (domain: string): string => {
  * @returns true if valid, false otherwise
  */
 export const validateDomainName = (domain: string): boolean => {
-  // Domain must be 2-50 characters, lowercase letters, numbers, and hyphens only
-  // Cannot start or end with hyphen, cannot have consecutive hyphens
-  const validFormat = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(domain);
-  const validLength = domain.length >= 2 && domain.length <= 50;
+  // Domain must be 4-253 characters, supports full domain format with TLD (e.g., techcorp.com, techcorp.co.uk)
+  // Lowercase letters, numbers, hyphens, and dots only
+  // Cannot start or end with hyphen or dot, cannot have consecutive hyphens or dots
+  const domainRegex = /^[a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?)*$/;
+  const validFormat = domainRegex.test(domain);
+  const validLength = domain.length >= 4 && domain.length <= 253; // RFC compliant
   const noConsecutiveHyphens = !domain.includes('--');
+  const noConsecutiveDots = !domain.includes('..');
+  const hasTLD = domain.includes('.') && domain.split('.').length >= 2;
   
-  return validFormat && validLength && noConsecutiveHyphens;
+  return validFormat && validLength && noConsecutiveHyphens && noConsecutiveDots && hasTLD;
 };
 
 /**
@@ -103,7 +107,7 @@ export const validateDomain = (domain: string): { isValid: boolean; error?: stri
   if (!validateDomainName(domain)) {
     return { 
       isValid: false, 
-      error: 'Domain must be 2-50 characters with lowercase letters, numbers, and hyphens only. Cannot start/end with hyphen or contain consecutive hyphens.' 
+      error: 'Domain must be 4-253 characters in full domain format (e.g., techcorp.com). Only lowercase letters, numbers, hyphens, and dots allowed. Cannot start/end with hyphen or dot.' 
     };
   }
 
