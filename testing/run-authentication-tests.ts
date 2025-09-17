@@ -7,7 +7,12 @@
 
 import { AuthenticationTestSuite, TestReport } from './authentication-test-suite';
 import { writeFileSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+// ES module equivalent of __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 async function main() {
   console.log('🚀 Phase 5e: Authentication Testing & Monitoring');
@@ -111,11 +116,29 @@ function generateHumanReadableReport(report: TestReport): void {
   // Phase 5e validation status
   console.log('');
   console.log('🎯 PHASE 5e VALIDATION STATUS:');
-  if (report.summary.failed === 0) {
+  
+  const criticalTestsPassed = report.results.filter(r => 
+    (r.testName.includes('Login - Valid Credentials') || 
+     r.testName.includes('JWT Token Validation') ||
+     r.testName.includes('Sysadmin Access Validation')) && 
+    r.status === 'PASS'
+  ).length;
+  
+  const criticalTestsTotal = report.results.filter(r => 
+    r.testName.includes('Login - Valid Credentials') || 
+    r.testName.includes('JWT Token Validation') ||
+    r.testName.includes('Sysadmin Access Validation')
+  ).length;
+
+  if (report.summary.failed === 0 && criticalTestsPassed === criticalTestsTotal) {
     console.log('  ✅ PASSED - Domain-based authentication system ready for production');
     console.log('  ✅ All security measures validated');
     console.log('  ✅ Frontend/backend integration confirmed'); 
     console.log('  ✅ Tenant isolation working correctly');
+  } else if (report.summary.failed === 0 && report.summary.skipped > 0) {
+    console.log('  ⚠️  CONDITIONAL PASS - Some tests skipped due to rate limiting');
+    console.log('  ⚠️  Manual verification recommended for skipped critical tests');
+    console.log('  🔍 Consider testing in isolated environment to avoid rate limits');
   } else {
     console.log('  ❌ ISSUES DETECTED - Review failed tests before production deployment');
     console.log('  ⚠️  Some authentication features may not work as expected');
@@ -125,11 +148,16 @@ function generateHumanReadableReport(report: TestReport): void {
   console.log('');
   console.log('💡 RECOMMENDATIONS:');
   
-  if (report.summary.failed === 0) {
+  if (report.summary.failed === 0 && report.summary.skipped === 0) {
     console.log('  • ✅ System is ready for production deployment');
     console.log('  • 📊 Consider implementing monitoring dashboards');
     console.log('  • 🔄 Set up automated test execution in CI/CD pipeline');
     console.log('  • 📝 Update user documentation with new login formats');
+  } else if (report.summary.failed === 0 && report.summary.skipped > 0) {
+    console.log('  • 🧪 Re-run tests in isolated environment to avoid rate limiting');
+    console.log('  • ✋ Manual verification of skipped critical authentication flows');
+    console.log('  • 📊 Consider rate limit configuration for testing environments');
+    console.log('  • ⚠️  Cautious production deployment - verify skipped tests manually');
   } else {
     console.log('  • 🔧 Fix failing tests before production deployment');
     console.log('  • 🧪 Re-run test suite after fixes');
@@ -142,6 +170,7 @@ function generateHumanReadableReport(report: TestReport): void {
 }
 
 // Execute if run directly
-if (require.main === module) {
+// For ES modules, check if this is the main module
+if (import.meta.url === `file://${process.argv[1]}`) {
   main();
 }

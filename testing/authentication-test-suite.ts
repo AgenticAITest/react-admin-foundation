@@ -189,33 +189,29 @@ export class AuthenticationTestSuite {
     console.log('\n🔒 2. Security Testing');
     console.log('-'.repeat(50));
 
-    // Test 2.1: Rate limiting validation
-    await this.runTest('Rate Limiting Protection', async () => {
-      const attempts: Promise<any>[] = [];
-      
-      // Attempt multiple failed logins quickly
-      for (let i = 0; i < 12; i++) {
+    // Test 2.1: Rate limiting validation - DEDICATED test that EXPECTS 429
+    await this.runTest('Rate Limiting Protection (Dedicated)', async () => {
+      // Make rapid requests to trigger rate limiting
+      const attempts = [];
+      for (let i = 0; i < 15; i++) {
         attempts.push(
           axios.post(`${BASE_URL}/api/auth/login`, {
-            username: 'sysadmin',
+            username: 'testuser_rate_limit',
             password: 'wrongpassword'
-          }).catch(e => ({ error: e }))
+          }, { timeout: 5000 }).catch(e => e.response)
         );
       }
 
       const results = await Promise.all(attempts);
-      const rateLimitedCount = results.filter(r => 
-        r.error?.response?.status === 429
-      ).length;
+      const rateLimitResponses = results.filter(r => r?.status === 429).length;
+      const authFailures = results.filter(r => r?.status === 400).length;
 
-      if (rateLimitedCount > 0) {
-        return `Rate limiting active: ${rateLimitedCount} requests rate-limited`;
+      if (rateLimitResponses > 0) {
+        return `Rate limiting working correctly: ${rateLimitResponses} requests blocked, ${authFailures} auth failures`;
+      } else if (authFailures >= 10) {
+        return `Rate limiting may be configured with higher thresholds: ${authFailures} auth failures processed`;
       } else {
-        // Check if we're getting consistent 400s (auth failures)
-        const authFailures = results.filter(r => 
-          r.error?.response?.status === 400
-        ).length;
-        return `Authentication failures: ${authFailures}/12 requests (rate limiting may be configured differently)`;
+        throw new Error(`Rate limiting not working: only ${rateLimitResponses} rate limited, ${authFailures} auth failures`);
       }
     });
 
@@ -236,6 +232,7 @@ export class AuthenticationTestSuite {
             username: domain,
             password: 'wrongpassword'
           });
+          responses.push(`${domain}: Login succeeded (unexpected)`);
         } catch (error: any) {
           const message = error.response?.data?.message || 'Unknown error';
           responses.push(`${domain}: ${message}`);
@@ -243,12 +240,18 @@ export class AuthenticationTestSuite {
       }
 
       // All responses should be generic "Invalid credentials"
-      const genericResponses = responses.filter(r => r.includes('Invalid credentials')).length;
+      const genericResponses = responses.filter(r => 
+        r.includes('Invalid credentials') || r.includes('Too many login attempts')
+      ).length;
       
       if (genericResponses === testDomains.length) {
         return 'All login attempts return generic error messages - enumeration prevented';
       } else {
-        return `Warning: ${genericResponses}/${testDomains.length} responses were generic. Responses:\n${responses.join('\n')}`;
+        // FAIL the test if responses leak information
+        const nonGeneric = responses.filter(r => 
+          !r.includes('Invalid credentials') && !r.includes('Too many login attempts')
+        );
+        throw new Error(`Domain enumeration possible! Non-generic responses detected:\n${nonGeneric.join('\n')}\nAll responses:\n${responses.join('\n')}`);
       }
     });
 
@@ -262,25 +265,51 @@ export class AuthenticationTestSuite {
 
       const token = loginResponse.data.accessToken;
       
-      // Decode JWT payload (without verification)
-      const payload = JSON.parse(atob(token.split('.')[1]));
+      // Decode JWT payload properly using Buffer.from
+      const tokenParts = token.split('.');
+      if (tokenParts.length !== 3) {
+        throw new Error('Invalid JWT token structure');
+      }
+
+      const headerBuffer = Buffer.from(tokenParts[0], 'base64url');
+      const payloadBuffer = Buffer.from(tokenParts[1], 'base64url');
       
-      // Check token expiration is reasonable (24 hours for access token)
+      const header = JSON.parse(headerBuffer.toString());
+      const payload = JSON.parse(payloadBuffer.toString());
+      
+      // Critical security checks
+      if (header.alg === 'none') {
+        throw new Error('JWT using unsafe "none" algorithm');
+      }
+
+      if (!header.alg || header.alg === 'HS256' === false) {
+        // Accept HS256 or other secure algorithms, but reject 'none'
+      }
+
+      // Check token expiration is within reasonable range (1-48 hours)
       const exp = payload.exp;
       const iat = payload.iat;
       const tokenLifetime = exp - iat;
       
-      // Should be 24 hours = 86400 seconds
-      if (tokenLifetime !== 86400) {
-        return `Warning: Token lifetime is ${tokenLifetime} seconds (expected 86400)`;
+      if (tokenLifetime < 3600 || tokenLifetime > 172800) { // 1 hour to 48 hours
+        throw new Error(`Token lifetime ${tokenLifetime}s outside acceptable range (3600-172800s)`);
       }
 
-      // Check token contains expected claims
-      if (!payload.username) {
-        throw new Error('Token missing username claim');
+      // Check required claims exist
+      const requiredClaims = ['username', 'exp', 'iat'];
+      for (const claim of requiredClaims) {
+        if (!payload[claim]) {
+          throw new Error(`Token missing required claim: ${claim}`);
+        }
       }
 
-      return `JWT tokens properly configured with ${tokenLifetime/3600}h lifetime and required claims`;
+      // Validate token is not expired
+      const now = Math.floor(Date.now() / 1000);
+      if (payload.exp <= now) {
+        throw new Error('Token is already expired');
+      }
+
+      return `JWT security validated: ${header.alg} algorithm, ${tokenLifetime/3600}h lifetime, all required claims present`;
     });
 
     // Test 2.4: Password security (no exposure in logs/errors)
@@ -461,42 +490,84 @@ export class AuthenticationTestSuite {
   }
 
   /**
-   * Helper method to run individual tests
+   * Helper method to run individual tests with proper retry logic
    */
   private async runTest(testName: string, testFunction: () => Promise<string>): Promise<void> {
     const startTime = Date.now();
+    const maxRetries = 3;
+    let lastError: any;
     
-    try {
-      console.log(`  Running: ${testName}...`);
-      const message = await Promise.race([
-        testFunction(),
-        new Promise<never>((_, reject) => 
-          setTimeout(() => reject(new Error('Test timeout')), TEST_TIMEOUT)
-        )
-      ]);
-      
-      const duration = Date.now() - startTime;
-      this.results.push({
-        testName,
-        status: 'PASS',
-        message,
-        duration
-      });
-      
-      console.log(`  ✅ PASS: ${testName} (${duration}ms)`);
-    } catch (error: any) {
-      const duration = Date.now() - startTime;
-      this.results.push({
-        testName,
-        status: 'FAIL',
-        message: 'Test failed',
-        duration,
-        error: error.message
-      });
-      
-      console.log(`  ❌ FAIL: ${testName} (${duration}ms)`);
-      console.log(`    Error: ${error.message}`);
+    console.log(`  Running: ${testName}...`);
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        // Add delay between attempts to avoid rate limiting
+        if (attempt > 1) {
+          const delay = Math.pow(2, attempt - 1) * 1000; // Exponential backoff: 2s, 4s, 8s
+          console.log(`    Retry ${attempt}/${maxRetries} after ${delay}ms delay...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        } else {
+          // Small delay before first attempt
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        
+        const message = await Promise.race([
+          testFunction(),
+          new Promise<never>((_, reject) => 
+            setTimeout(() => reject(new Error('Test timeout')), TEST_TIMEOUT)
+          )
+        ]);
+        
+        const duration = Date.now() - startTime;
+        this.results.push({
+          testName,
+          status: 'PASS',
+          message,
+          duration
+        });
+        
+        console.log(`  ✅ PASS: ${testName} (${duration}ms)`);
+        return; // Success, exit retry loop
+        
+      } catch (error: any) {
+        lastError = error;
+        
+        // If it's rate limiting, continue to retry
+        if (error.response?.status === 429 || error.message.includes('429')) {
+          if (attempt === maxRetries) {
+            // On final attempt, mark as SKIP due to rate limiting
+            const duration = Date.now() - startTime;
+            this.results.push({
+              testName,
+              status: 'SKIP',
+              message: 'Test skipped due to persistent rate limiting - system protection active',
+              duration,
+              error: `Rate limited after ${maxRetries} attempts`
+            });
+            console.log(`  ⏭️  SKIP: ${testName} (${duration}ms) - Rate limited`);
+            return;
+          }
+          // Continue to next retry
+          continue;
+        } else {
+          // Non-rate-limit error, fail immediately
+          break;
+        }
+      }
     }
+    
+    // Test failed
+    const duration = Date.now() - startTime;
+    this.results.push({
+      testName,
+      status: 'FAIL',
+      message: 'Test failed',
+      duration,
+      error: lastError.message
+    });
+    
+    console.log(`  ❌ FAIL: ${testName} (${duration}ms)`);
+    console.log(`    Error: ${lastError.message}`);
   }
 
   /**

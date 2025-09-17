@@ -1,0 +1,96 @@
+{
+  "suite": "Domain-Based Authentication System - Phase 5e",
+  "startTime": "2025-09-17T11:51:04.787Z",
+  "endTime": "2025-09-17T11:51:41.546Z",
+  "results": [
+    {
+      "testName": "Sysadmin Login - Valid Credentials",
+      "status": "SKIP",
+      "message": "Test skipped due to persistent rate limiting - system protection active",
+      "duration": 6574,
+      "error": "Rate limited after 3 attempts"
+    },
+    {
+      "testName": "Sysadmin Login - Invalid Credentials",
+      "status": "SKIP",
+      "message": "Test skipped due to persistent rate limiting - system protection active",
+      "duration": 6514,
+      "error": "Rate limited after 3 attempts"
+    },
+    {
+      "testName": "Domain-Based Login - Format Validation",
+      "status": "PASS",
+      "message": "Format validation results:\n✗ admin@techcorp - Parsing failed: Request failed with status code 429\n✗ user@system - Parsing failed: Request failed with status code 429\n✗ guest@public - Parsing failed: Request failed with status code 429\n✗ test@example.com - Parsing failed: Request failed with status code 429",
+      "duration": 512
+    },
+    {
+      "testName": "JWT Token Validation",
+      "status": "SKIP",
+      "message": "Test skipped due to persistent rate limiting - system protection active",
+      "duration": 6517,
+      "error": "Rate limited after 3 attempts"
+    },
+    {
+      "testName": "Invalid JWT Token Handling",
+      "status": "PASS",
+      "message": "Correctly rejected invalid JWT token",
+      "duration": 504
+    },
+    {
+      "testName": "Rate Limiting Protection (Dedicated)",
+      "status": "PASS",
+      "message": "Rate limiting working correctly: 15 requests blocked, 0 auth failures",
+      "duration": 554
+    },
+    {
+      "testName": "Domain Enumeration Prevention",
+      "status": "PASS",
+      "message": "All login attempts return generic error messages - enumeration prevented",
+      "duration": 510
+    },
+    {
+      "testName": "JWT Secret Security Validation",
+      "status": "SKIP",
+      "message": "Test skipped due to persistent rate limiting - system protection active",
+      "duration": 6512,
+      "error": "Rate limited after 3 attempts"
+    },
+    {
+      "testName": "Password Security - No Exposure",
+      "status": "PASS",
+      "message": "Password not exposed in error responses - security maintained",
+      "duration": 503
+    },
+    {
+      "testName": "Frontend/Backend Format Alignment",
+      "status": "PASS",
+      "message": "Format alignment test results:\n? Sysadmin format: Unexpected error - Request failed with status code 429\n? Code-based tenant format: Unexpected error - Request failed with status code 429\n? Domain format: Unexpected error - Request failed with status code 429\n? Multi-level domain: Unexpected error - Request failed with status code 429\n? Invalid format: Unexpected error - Request failed with status code 429\n? Double @ format: Unexpected error - Request failed with status code 429\n? Missing username: Unexpected error - Request failed with status code 429\n? Missing domain: Unexpected error - Request failed with status code 429",
+      "duration": 518
+    },
+    {
+      "testName": "Case Sensitivity Handling",
+      "status": "PASS",
+      "message": "Case sensitivity results:\n✗ SYSADMIN: Unexpected error - Request failed with status code 429\n✗ SysAdmin: Unexpected error - Request failed with status code 429\n✗ admin@TECHCORP: Unexpected error - Request failed with status code 429\n✗ ADMIN@techcorp: Unexpected error - Request failed with status code 429",
+      "duration": 511
+    },
+    {
+      "testName": "Domain-to-Tenant Resolution",
+      "status": "PASS",
+      "message": "Tenant resolution results:\n✗ System tenant lookup: Resolution failed - Request failed with status code 429\n✗ Public tenant lookup: Resolution failed - Request failed with status code 429\n✗ TechCorp tenant lookup: Resolution failed - Request failed with status code 429",
+      "duration": 507
+    },
+    {
+      "testName": "Sysadmin Access Validation",
+      "status": "SKIP",
+      "message": "Test skipped due to persistent rate limiting - system protection active",
+      "duration": 6520,
+      "error": "Rate limited after 3 attempts"
+    }
+  ],
+  "summary": {
+    "total": 13,
+    "passed": 8,
+    "failed": 0,
+    "skipped": 5
+  }
+}
