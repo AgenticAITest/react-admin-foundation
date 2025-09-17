@@ -37,8 +37,8 @@ export function LoginForm({
     // Allow sysadmin (case insensitive)
     if (username.toLowerCase() === 'sysadmin') return true;
     
-    // Validate email-like format for domain-based login
-    const emailPattern = /^[a-z0-9._-]+@[a-z0-9.-]+\.[a-z]{2,}$/;
+    // Validate username@domain-or-code format for domain-based login
+    const emailPattern = /^[a-z0-9._-]+@[a-z0-9.-]+$/;
     return emailPattern.test(username);
   }, [username]);
 
@@ -47,7 +47,7 @@ export function LoginForm({
     
     // Validate input format before submitting
     if (!isValidLoginInput) {
-      setError("Please enter a valid login format: username@domain.com or sysadmin");
+      setError("Please enter a valid login format: username@domain-or-code or sysadmin");
       return;
     }
     
@@ -93,7 +93,7 @@ export function LoginForm({
                     type="text"
                     required
                     value={username}
-                    placeholder="username@domain.com or sysadmin"
+                    placeholder="username@domain-or-code or sysadmin"
                     autoComplete="username"
                     className={`${!isValidLoginInput && inputTouched ? 'border-destructive' : ''}`}
                     onChange={(e) => {
@@ -105,7 +105,7 @@ export function LoginForm({
                   />
                   {inputTouched && !isValidLoginInput && (
                     <p className="text-destructive text-xs mt-1">
-                      Enter username@domain.com or sysadmin
+                      Enter username@domain-or-code or sysadmin
                     </p>
                   )}
                   <p className="text-muted-foreground text-xs mt-1">

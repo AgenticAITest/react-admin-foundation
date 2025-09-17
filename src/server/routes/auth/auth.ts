@@ -3,6 +3,7 @@ import 'dotenv/config';
 import { and, eq } from 'drizzle-orm';
 import { Router } from 'express';
 import jwt from 'jsonwebtoken';
+import { rateLimit } from 'express-rate-limit';
 import { db } from 'src/server/lib/db';
 import * as table from 'src/server/lib/db/schema/system';
 import { sendResetEmail } from 'src/server/lib/email';
@@ -19,6 +20,16 @@ const RESET_PASSWORD_TOKEN_SECRET = process.env.RESET_PASSWORD_TOKEN_SECRET || '
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 
 const authRoutes = Router();
+
+// Login-specific rate limiter - more restrictive for authentication
+const loginRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  limit: 10, // Limit each IP to 10 login attempts per window
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { message: 'Too many login attempts, please try again later.' },
+  skipSuccessfulRequests: true, // Don't count successful requests
+});
 
 // Login route
 /**
@@ -48,7 +59,7 @@ const authRoutes = Router();
  *       400:
  *         description: Invalid request body
  */
-authRoutes.post('/login', validateData(userLoginSchema), async (req, res) => {
+authRoutes.post('/login', loginRateLimiter, validateData(userLoginSchema), async (req, res) => {
   const { username: loginInput, password } = req.body;
 
   try {
