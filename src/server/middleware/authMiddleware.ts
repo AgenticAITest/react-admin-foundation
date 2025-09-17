@@ -67,8 +67,12 @@ export const authenticated = () => async (req: Request, res: Response, next: Nex
     if (!currentUser.isSuperAdmin) {
       req.db = await tenantDbManager.getTenantDb(currentUser.activeTenantId);
     } else {
-      // Super admins get global database access
-      req.db = db;
+      // Super admins need tenant-scoped access for module APIs
+      // Use their active tenant, or fallback to System tenant for module access
+      const tenantId = currentUser.activeTenantId || '829cba12-507f-4826-8d3e-3c4858f00b1a'; // System tenant
+      req.db = await tenantDbManager.getTenantDb(tenantId);
+      // Also provide global db access as req.globalDb for system operations
+      req.globalDb = db;
     }
     
     next();
