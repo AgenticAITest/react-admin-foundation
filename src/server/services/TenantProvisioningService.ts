@@ -198,7 +198,9 @@ export class TenantProvisioningService {
    * Create tenant record in sys_tenant table
    */
   private async createTenantRecord(tx: any, data: CreateTenantRequest, schemaName: string) {
+    const { randomUUID } = await import('crypto');
     const [tenantRecord] = await tx.insert(tenant).values({
+      id: randomUUID(),
       code: data.domain.toUpperCase(), // Use domain as code for now
       name: data.tenantName,
       domain: data.domain,

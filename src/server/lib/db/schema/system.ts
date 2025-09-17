@@ -1,8 +1,8 @@
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import { boolean, date, pgTable, primaryKey, time, timestamp, unique, uniqueIndex, uuid, varchar, integer, bigint } from 'drizzle-orm/pg-core';
 
 export const tenant = pgTable('sys_tenant', {
-  id: uuid('id').primaryKey(),
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
   code: varchar('code', { length: 255 }).notNull().unique(),
   name: varchar('name', { length: 255 }).notNull(),
   description: varchar('description', { length: 255 }),
@@ -31,7 +31,7 @@ export const tenant = pgTable('sys_tenant', {
 });
 
 export const user = pgTable('sys_user', {
-  id: uuid('id').primaryKey(),
+  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
   username: varchar('username', { length: 255 }).notNull().unique(),
   passwordHash: varchar('password_hash', { length: 255 }).notNull(),
   fullname: varchar('fullname', { length: 255 }).notNull(),
