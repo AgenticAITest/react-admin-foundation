@@ -7,6 +7,9 @@ export const tenant = pgTable('sys_tenant', {
   name: varchar('name', { length: 255 }).notNull(),
   description: varchar('description', { length: 255 }),
   
+  // Domain for login routing and schema naming
+  domain: varchar('domain', { length: 255 }).notNull().unique(),
+  
   // Schema-per-tenant management fields
   schemaName: varchar('schema_name', { length: 255 }).notNull().unique(),
   status: varchar('status', { 
