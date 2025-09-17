@@ -30,14 +30,16 @@ export function parseLoginInput(input: string): ParsedLoginInput {
     throw new Error('Invalid credentials');
   }
 
-  // Handle sysadmin special case (no domain)
-  if (input === 'sysadmin') {
-    return { username: 'sysadmin', domain: null };
+  const trimmedInput = input.trim();
+
+  // Handle sysadmin special case (no domain) - case insensitive
+  if (trimmedInput.toLowerCase() === 'sysadmin') {
+    return { username: 'sysadmin', domain: null }; // Always return lowercase for consistency
   }
 
   // Parse email-like format for tenant users
   const emailPattern = /^([^@]+)@([^@]+)$/;
-  const match = input.match(emailPattern);
+  const match = trimmedInput.match(emailPattern);
 
   if (!match) {
     throw new Error('Invalid credentials'); // Generic error for security
@@ -45,14 +47,14 @@ export function parseLoginInput(input: string): ParsedLoginInput {
 
   const [, username, domain] = match;
   return {
-    username: username.toLowerCase(),
-    domain: domain.toLowerCase()
+    username: username.trim(), // Preserve original case for username
+    domain: domain.toLowerCase().trim() // Only lowercase the domain
   };
 }
 
 /**
- * Find tenant by domain name
- * @param domain - Domain name (e.g., techcorp.com)
+ * Find tenant by domain name, with fallback to legacy tenant code lookup
+ * @param domain - Domain name (e.g., techcorp.com) or legacy tenant code
  * @returns Tenant record or null if not found
  */
 export async function findTenantByDomain(domain: string): Promise<TenantLookupResult | null> {
@@ -61,7 +63,8 @@ export async function findTenantByDomain(domain: string): Promise<TenantLookupRe
   }
 
   try {
-    const [tenantRecord] = await db
+    // First try to find by domain (new format)
+    const [domainRecord] = await db
       .select({
         id: tenant.id,
         code: tenant.code,
@@ -76,9 +79,29 @@ export async function findTenantByDomain(domain: string): Promise<TenantLookupRe
       ))
       .limit(1);
 
-    return tenantRecord || null;
+    if (domainRecord) {
+      return domainRecord;
+    }
+
+    // Fallback: try to find by tenant code (legacy format)
+    const [codeRecord] = await db
+      .select({
+        id: tenant.id,
+        code: tenant.code,
+        name: tenant.name,
+        domain: tenant.domain,
+        schemaName: tenant.schemaName
+      })
+      .from(tenant)
+      .where(and(
+        eq(tenant.code, domain.toUpperCase()),
+        eq(tenant.status, 'active')
+      ))
+      .limit(1);
+
+    return codeRecord || null;
   } catch (error) {
-    console.error('Error finding tenant by domain:', error);
+    console.error('Error finding tenant by domain/code:', error);
     return null;
   }
 }
