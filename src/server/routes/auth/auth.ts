@@ -60,11 +60,6 @@ const loginRateLimiter = rateLimit({
  *         description: Invalid request body
  */
 authRoutes.post('/login', loginRateLimiter, validateData(userLoginSchema), async (req, res) => {
-  console.log(`🟡 LOGIN ENDPOINT HIT: method=${req.method}, url=${req.url}`);
-  console.log(`🟡 REQUEST HEADERS:`, JSON.stringify(req.headers, null, 2));
-  console.log(`🟡 REQUEST BODY:`, JSON.stringify(req.body, null, 2));
-  console.log(`🔥 REACHED AUTHENTICATION LOGIC - MIDDLEWARE PASSED`);
-  
   const { username: loginInput, password } = req.body;
   
   try {

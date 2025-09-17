@@ -19,6 +19,8 @@ import { tenantDbManager } from "./lib/db/tenant-db";
 
 const app = express();
 
+// Configure Express to trust Replit proxy for rate limiting
+app.set('trust proxy', true);
 
 // CORS
 app.use((req, res, next) => {
