@@ -12,7 +12,7 @@ import { cn } from "@client/lib/utils";
 import { useAuth } from "@client/provider/AuthProvider";
 import axios from "axios";
 import { Loader2 } from "lucide-react";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Link, NavLink, useNavigate, useSearchParams } from "react-router";
 import { set } from "zod";
 
@@ -24,14 +24,34 @@ export function LoginForm({
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [inputTouched, setInputTouched] = useState(false);
 
   const { setToken, setUser } = useAuth();
   let navigate = useNavigate();
 
   const [searchParams] = useSearchParams();
 
+  // Real-time validation for login input format
+  const isValidLoginInput = useMemo(() => {
+    if (!username) return true; // Don't show error for empty input
+    
+    // Allow sysadmin (case insensitive)
+    if (username.toLowerCase() === 'sysadmin') return true;
+    
+    // Validate email-like format for domain-based login
+    const emailPattern = /^[a-z0-9._-]+@[a-z0-9.-]+\.[a-z]{2,}$/;
+    return emailPattern.test(username);
+  }, [username]);
+
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    
+    // Validate input format before submitting
+    if (!isValidLoginInput) {
+      setError("Please enter a valid login format: username@domain.com or sysadmin");
+      return;
+    }
+    
     setLoading(true);
     setError("");
     try {
@@ -50,7 +70,7 @@ export function LoginForm({
       navigate(redirectTo || "/console/dashboard");
     } catch (error) {
       console.error("Error submitting data:", error);
-      setError("invalid credentials");
+      setError("Invalid credentials. Please check your username and password.");
     } finally {
       setLoading(false);
     }
@@ -68,15 +88,30 @@ export function LoginForm({
             <div className="grid gap-6">
               <div className="grid gap-6">
                 <div className="grid gap-3">
-                  <Label htmlFor="email">Username</Label>
+                  <Label htmlFor="username">Username</Label>
                   <Input
                     id="username"
                     type="text"
                     required
                     value={username}
-                    placeholder="username@tenant.domain"
-                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="username@domain.com or sysadmin"
+                    autoComplete="username"
+                    className={`${!isValidLoginInput && inputTouched ? 'border-destructive' : ''}`}
+                    onChange={(e) => {
+                      const value = e.target.value.toLowerCase();
+                      setUsername(value);
+                      if (!inputTouched) setInputTouched(true);
+                    }}
+                    onBlur={() => setInputTouched(true)}
                   />
+                  {inputTouched && !isValidLoginInput && (
+                    <p className="text-destructive text-xs mt-1">
+                      Enter username@domain.com or sysadmin
+                    </p>
+                  )}
+                  <p className="text-muted-foreground text-xs mt-1">
+                    Use your domain-based login or 'sysadmin' for admin access
+                  </p>
                 </div>
                 <div className="grid gap-3">
                   <div className="flex items-center">
