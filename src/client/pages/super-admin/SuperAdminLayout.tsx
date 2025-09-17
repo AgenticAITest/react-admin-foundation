@@ -12,7 +12,7 @@ const SuperAdminLayout: React.FC = () => {
   }
 
   // Check if user has super admin role or is marked as super admin
-  const isSuperAdmin = user.isSuperAdmin || user.roles.includes('super_admin');
+  const isSuperAdmin = user.isSuperAdmin || user.roles.includes('SYSADMIN');
   
   if (!isSuperAdmin) {
     return (
@@ -31,7 +31,7 @@ const SuperAdminLayout: React.FC = () => {
   }
 
   return (
-    <Authorized roles="super_admin">
+    <Authorized roles="SYSADMIN">
       <Outlet />
     </Authorized>
   );
