@@ -348,8 +348,10 @@ tenantRoutes.get('/:id', authorized('SYSADMIN', 'system.tenant.view'), async (re
  */
 tenantRoutes.post('/', hasRoles('SYSADMIN'), async (req, res) => {
   try {
-    // Validate required fields
+    // Validate required fields with frontend payload compatibility
     const {
+      // Support both 'name' (frontend) and 'tenantName' (backward compatibility)
+      name,
       tenantName,
       domain,
       adminUsername,
@@ -357,22 +359,33 @@ tenantRoutes.post('/', hasRoles('SYSADMIN'), async (req, res) => {
       adminFullName,
       adminPassword,
       confirmPassword,
+      // Support both frontend naming and backend naming
       logoUrl,
       address,
       phoneNumber,
+      companyAddress,
+      companyPhone,
+      companyEmail,
       timezone = 'UTC',
       currency = 'USD',
       language = 'en'
     } = req.body;
 
+    // Map frontend payload to backend format
+    const finalTenantName = name || tenantName; // Priority to 'name' (frontend), fallback to 'tenantName'
+    const finalAddress = companyAddress || address;
+    const finalPhoneNumber = companyPhone || phoneNumber;
+    const finalLogoUrl = logoUrl; // Frontend doesn't send this yet
+
     // Basic validation
-    if (!tenantName || !domain || !adminUsername || !adminEmail || !adminFullName || !adminPassword) {
+    if (!finalTenantName || !domain || !adminUsername || !adminEmail || !adminFullName || !adminPassword) {
       return res.status(400).json({
-        error: 'Missing required fields: tenantName, domain, adminUsername, adminEmail, adminFullName, adminPassword'
+        error: 'Missing required fields: name (or tenantName), domain, adminUsername, adminEmail, adminFullName, adminPassword'
       });
     }
 
-    if (adminPassword !== confirmPassword) {
+    // Only validate password confirmation if it's provided (frontend compatibility)
+    if (confirmPassword && adminPassword !== confirmPassword) {
       return res.status(400).json({
         error: 'Password confirmation does not match'
       });
@@ -380,15 +393,15 @@ tenantRoutes.post('/', hasRoles('SYSADMIN'), async (req, res) => {
 
     // Use provisioning service to create tenant
     const result = await provisioningService.createTenant({
-      tenantName,
+      tenantName: finalTenantName,
       domain,
       adminUsername,
       adminEmail,
       adminFullName,
       adminPassword,
-      logoUrl,
-      address,
-      phoneNumber,
+      logoUrl: finalLogoUrl,
+      address: finalAddress,
+      phoneNumber: finalPhoneNumber,
       timezone,
       currency,
       language
