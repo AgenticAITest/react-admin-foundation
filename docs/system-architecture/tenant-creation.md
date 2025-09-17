@@ -6,15 +6,22 @@ This document outlines the implementation plan for Super Admin tenant creation f
 ## 🎯 Requirements Summary
 
 ### Super Admin Capabilities
-- List all tenants in a searchable table
-- Create new tenants with complete company information
+- List all tenants in a searchable table (registry info only)
+- Create new tenants with mandatory info + optional company details
+- Control tenant name and domain (contract-based, login routing)
 - Automatically provision tenant schemas with RBAC tables
 - Create tenant admin users with default roles and permissions
 
-### Schema Naming Convention
+### Tenant Admin Capabilities
+- Full CRUD access to company details (logo, address, phone, localization)
+- READ-ONLY access to tenant name (contract-based, super admin controlled)
+- NO access to domain (super admin controlled, affects login routing)
+
+### Schema Naming & Login Routing
 - Pattern: `tenant_<domain_name>`
 - Example: Domain "acme-corp" → Schema "tenant_acme_corp" 
-- Use domain field (not tenant name) for schema generation
+- Domain is used during login to route users to correct tenant schema
+- Super admin controls domain (cannot be changed by tenant admin)
 
 ## 📱 Frontend Design
 
@@ -64,27 +71,24 @@ interface TenantTableRow {
 #### Form Sections
 ```typescript
 interface CreateTenantForm {
-  companyInfo: {
-    tenantName: string           // Required
-    logoUrl?: string             // Optional
-    domain: string               // Required - used for schema name
-    address?: string             // Optional
-    phoneNumber?: string         // Optional
-  }
+  // MANDATORY fields
+  tenantName: string             // Required - contract-based (super admin controlled)
+  domain: string                 // Required - used for schema name + login routing
   
-  localization: {
-    timezone: string             // Default: 'UTC'
-    currency: string             // Default: 'USD' 
-    language: string             // Default: 'en'
-  }
+  // MANDATORY tenant admin user
+  adminUsername: string          // Required
+  adminEmail: string             // Required
+  adminFullName: string          // Required
+  adminPassword: string          // Required
+  confirmPassword: string        // Required - must match password
   
-  tenantAdmin: {
-    adminUsername: string        // Required
-    adminEmail: string           // Required
-    adminFullName: string        // Required
-    adminPassword: string        // Required
-    confirmPassword: string      // Required - must match password
-  }
+  // OPTIONAL company details (if filled, goes to tenant_info table)
+  logoUrl?: string               // Optional - can be added by tenant admin later
+  address?: string               // Optional - can be added by tenant admin later
+  phoneNumber?: string           // Optional - can be added by tenant admin later
+  timezone: string               // Default: 'UTC'
+  currency: string               // Default: 'USD' 
+  language: string               // Default: 'en'
 }
 ```
 
@@ -212,14 +216,12 @@ POST   /api/system/tenant/:id/reactivate   # Reactivate tenant
 
 ### 1. Enhanced sys_tenant Table (PUBLIC Schema)
 ```sql
--- Add new columns to existing sys_tenant table
-ALTER TABLE sys_tenant ADD COLUMN IF NOT EXISTS logo_url VARCHAR(500);
+-- Add only registry/admin-controlled columns to existing sys_tenant table
 ALTER TABLE sys_tenant ADD COLUMN IF NOT EXISTS domain VARCHAR(255) UNIQUE;
-ALTER TABLE sys_tenant ADD COLUMN IF NOT EXISTS address TEXT;
-ALTER TABLE sys_tenant ADD COLUMN IF NOT EXISTS phone_number VARCHAR(50);
-ALTER TABLE sys_tenant ADD COLUMN IF NOT EXISTS timezone VARCHAR(100) DEFAULT 'UTC';
-ALTER TABLE sys_tenant ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'USD';
-ALTER TABLE sys_tenant ADD COLUMN IF NOT EXISTS language VARCHAR(10) DEFAULT 'en';
+
+-- sys_tenant stores ONLY super admin controlled data:
+-- id, code, name, domain, schemaName, status, created_at, updated_at
+-- NO company details (logo, address, phone, timezone, currency, language)
 ```
 
 ### 2. Tenant Schema Structure
@@ -229,18 +231,19 @@ For each tenant with domain "acme-corp", create schema "tenant_acme_corp":
 ```sql
 CREATE TABLE tenant_acme_corp.tenant_info (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name VARCHAR(255) NOT NULL,
-  logo_url VARCHAR(500),
-  domain VARCHAR(255) NOT NULL UNIQUE,
-  address TEXT,
-  phone_number VARCHAR(50),
-  timezone VARCHAR(100) DEFAULT 'UTC',
-  currency VARCHAR(10) DEFAULT 'USD', 
-  language VARCHAR(10) DEFAULT 'en',
-  status VARCHAR(50) DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'suspended')),
+  name VARCHAR(255) NOT NULL,           -- READ-ONLY for tenant admin (contract-based)
+  logo_url VARCHAR(500),                -- Tenant admin can modify
+  address TEXT,                         -- Tenant admin can modify
+  phone_number VARCHAR(50),             -- Tenant admin can modify
+  timezone VARCHAR(100) DEFAULT 'UTC',  -- Tenant admin can modify
+  currency VARCHAR(10) DEFAULT 'USD',   -- Tenant admin can modify
+  language VARCHAR(10) DEFAULT 'en',    -- Tenant admin can modify
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );
+
+-- NOTE: Domain is NOT stored here - it's in sys_tenant (super admin controlled)
+-- NOTE: Name is duplicated but tenant admin has READ-ONLY access (contract-based)
 ```
 
 #### B. RBAC Tables (Tenant Schema) 
@@ -416,6 +419,39 @@ export class TenantProvisioningService {
     await tx.execute(sql`CREATE SCHEMA ${sql.identifier(schemaName)}`);
   }
   
+  private async createTenantInfoTable(tx: Transaction, schemaName: string, data: CreateTenantRequest) {
+    // Create tenant_info table structure
+    await tx.execute(sql`
+      CREATE TABLE ${sql.identifier(schemaName)}.tenant_info (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name VARCHAR(255) NOT NULL,           -- READ-ONLY for tenant admin (contract-based)
+        logo_url VARCHAR(500),                -- Tenant admin can modify
+        address TEXT,                         -- Tenant admin can modify
+        phone_number VARCHAR(50),             -- Tenant admin can modify
+        timezone VARCHAR(100) DEFAULT 'UTC',  -- Tenant admin can modify
+        currency VARCHAR(10) DEFAULT 'USD',   -- Tenant admin can modify
+        language VARCHAR(10) DEFAULT 'en',    -- Tenant admin can modify
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    
+    // Insert initial tenant info (including optional fields if provided by super admin)
+    await tx.execute(sql`
+      INSERT INTO ${sql.identifier(schemaName)}.tenant_info 
+      (name, logo_url, address, phone_number, timezone, currency, language)
+      VALUES (
+        ${data.tenantName}, 
+        ${data.logoUrl || null}, 
+        ${data.address || null}, 
+        ${data.phoneNumber || null}, 
+        ${data.timezone || 'UTC'}, 
+        ${data.currency || 'USD'}, 
+        ${data.language || 'en'}
+      )
+    `);
+  }
+
   // ... other methods
 }
 ```
@@ -635,9 +671,9 @@ export const AddTenantModal: React.FC<AddTenantModalProps> = ({
         </div>
 
         <form onSubmit={handleSubmit(onSubmit)} className="modal-body">
-          {/* Company Information Section */}
+          {/* Mandatory Fields Section */}
           <div className="form-section">
-            <h3>Company Information</h3>
+            <h3>Tenant Registration (Required)</h3>
             
             <div className="form-group">
               <label>Tenant Name *</label>
@@ -694,9 +730,41 @@ export const AddTenantModal: React.FC<AddTenantModalProps> = ({
             </div>
           </div>
 
-          {/* Localization Section */}
+          {/* Optional Company Details Section */}
           <div className="form-section">
-            <h3>Localization</h3>
+            <h3>Company Details (Optional)</h3>
+            <small>These fields can be filled now or added later by the tenant administrator.</small>
+            
+            <div className="form-group">
+              <label>Company Logo URL</label>
+              <input
+                {...register('logoUrl')}
+                className={errors.logoUrl ? 'error' : ''}
+                placeholder="https://example.com/logo.png"
+              />
+              {errors.logoUrl && (
+                <span className="error-message">{errors.logoUrl.message}</span>
+              )}
+            </div>
+
+            <div className="form-group">
+              <label>Address</label>
+              <textarea
+                {...register('address')}
+                placeholder="Company address"
+                rows={3}
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Phone Number</label>
+              <input
+                {...register('phoneNumber')}
+                placeholder="+1-555-123-4567"
+              />
+            </div>
+            
+            <h4>Localization Settings</h4>
             
             <div className="form-row">
               <div className="form-group">
