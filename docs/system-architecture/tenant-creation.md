@@ -1006,14 +1006,279 @@ src/
 - Monitor schema creation time
 - Alert on creation failures
 
+### Phase 5: Domain-Based Login System
+
+#### 5.1 Enhanced Domain Validation
+
+**Requirements:**
+- Domain format: Lowercase only, multipart TLD support (e.g., `techcorp.com`, `techcorp.co.uk`)
+- Frontend: Enforce lowercase, block capital letters
+- Backend: Store domains lowercase for uniqueness
+- Special handling: `sysadmin` requires no domain (superuser exception)
+
+**Domain Validation Updates:**
+```typescript
+// Updated domain validation regex for full domain format
+const DOMAIN_REGEX = /^[a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?)*$/;
+
+// Frontend validation - enforce lowercase
+const validateDomainInput = (input: string): string => {
+  return input.toLowerCase().replace(/[^a-z0-9.-]/g, '');
+};
+
+// Backend validation - ensure proper domain format
+export const validateDomainName = (domain: string): boolean => {
+  return DOMAIN_REGEX.test(domain) && 
+         domain.length >= 4 && // minimum: a.co
+         domain.length <= 253; // RFC compliance
+};
+```
+
+#### 5.2 Login Authentication Redesign
+
+**Login Format:**
+- Tenant users: `username@domain.tld` (e.g., `admin@techcorp.com`)
+- Super admin: `sysadmin` (no domain required)
+- Error handling: Generic "invalid credentials" (no domain enumeration)
+
+**Authentication Flow Logic:**
+```typescript
+// Login input parsing
+function parseLoginInput(input: string): { username: string; domain: string | null } {
+  // Handle sysadmin special case
+  if (input === 'sysadmin') {
+    return { username: 'sysadmin', domain: null };
+  }
+  
+  // Parse email-like format
+  const emailPattern = /^([^@]+)@([^@]+)$/;
+  const match = input.match(emailPattern);
+  
+  if (!match) {
+    throw new Error('Invalid credentials'); // Generic error
+  }
+  
+  const [, username, domain] = match;
+  return { 
+    username: username.toLowerCase(), 
+    domain: domain.toLowerCase() 
+  };
+}
+
+// Authentication logic
+async function authenticateUser(username: string, domain: string | null, password: string) {
+  if (domain === null) {
+    // System user authentication (sysadmin)
+    return authenticateSystemUser(username, password);
+  } else {
+    // Tenant user authentication
+    const tenant = await findTenantByDomain(domain);
+    if (!tenant) {
+      throw new Error('Invalid credentials'); // Don't reveal domain doesn't exist
+    }
+    
+    return authenticateTenantUser(tenant, username, password);
+  }
+}
+```
+
+#### 5.3 Frontend Login Form Updates
+
+**UI/UX Changes:**
+```typescript
+// Login form component updates
+interface LoginFormProps {
+  placeholder: "username@domain.com or sysadmin";
+  autoComplete: "username";
+  inputTransform: (value) => value.toLowerCase(); // Auto-lowercase
+  validation: {
+    pattern: /^(sysadmin|[^@]+@[^@]+)$/;
+    message: "Enter username@domain.com or sysadmin";
+  }
+}
+
+// Real-time validation
+const validateLoginInput = (input: string): boolean => {
+  if (input === 'sysadmin') return true;
+  
+  const emailPattern = /^[a-z0-9._-]+@[a-z0-9.-]+\.[a-z]{2,}$/;
+  return emailPattern.test(input);
+};
+```
+
+#### 5.4 Backend API Authentication Updates
+
+**Login Route Enhancement:**
+```typescript
+// POST /api/auth/login
+router.post('/login', async (req, res) => {
+  try {
+    const { username: loginInput, password } = req.body;
+    
+    // Parse login input
+    const { username, domain } = parseLoginInput(loginInput);
+    
+    // Authenticate user
+    let user;
+    if (domain === null) {
+      // System user (sysadmin)
+      user = await authenticateSystemUser(username, password);
+    } else {
+      // Tenant user
+      const tenant = await findTenantByDomain(domain);
+      if (!tenant) {
+        return res.status(400).json({ message: 'Invalid credentials' });
+      }
+      
+      user = await authenticateTenantUser(tenant.schemaName, username, password);
+      user.tenantId = tenant.id;
+      user.tenantDomain = domain;
+    }
+    
+    // Generate JWT token
+    const token = generateJWT(user);
+    
+    res.json({
+      accessToken: token,
+      refreshToken: generateRefreshToken(user),
+      user: sanitizeUserData(user)
+    });
+    
+  } catch (error) {
+    // Always return generic error message
+    res.status(400).json({ message: 'Invalid credentials' });
+  }
+});
+```
+
+#### 5.5 Tenant Creation Form Updates
+
+**Domain Input Enhancement:**
+```typescript
+// Enhanced domain field in AddTenantModal
+const DomainField = () => {
+  const [domain, setDomain] = useState('');
+  const [isValid, setIsValid] = useState(false);
+  
+  const handleDomainChange = (value: string) => {
+    // Auto-convert to lowercase and validate
+    const cleanedValue = value.toLowerCase().replace(/[^a-z0-9.-]/g, '');
+    setDomain(cleanedValue);
+    setIsValid(validateDomainName(cleanedValue));
+  };
+  
+  return (
+    <div className="form-group">
+      <label>Domain * (e.g., techcorp.com)</label>
+      <input
+        type="text"
+        value={domain}
+        onChange={(e) => handleDomainChange(e.target.value)}
+        placeholder="company.com"
+        pattern="[a-z0-9.-]+"
+        className={isValid ? 'valid' : 'invalid'}
+      />
+      <small className="help-text">
+        Only lowercase letters, numbers, dots, and hyphens allowed
+      </small>
+    </div>
+  );
+};
+```
+
+#### 5.6 Security Considerations
+
+**Protection Against Attacks:**
+```typescript
+// Rate limiting - per domain and global
+const rateLimitConfig = {
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // 5 attempts per window
+  message: 'Too many login attempts',
+  keyGenerator: (req) => {
+    const { username } = parseLoginInput(req.body.username || '');
+    return `login_${req.ip}_${username}`;
+  }
+};
+
+// Domain enumeration prevention
+const preventDomainEnumeration = () => {
+  // Always take same time for response (prevent timing attacks)
+  const simulateAuthDelay = () => new Promise(resolve => 
+    setTimeout(resolve, 100 + Math.random() * 50)
+  );
+  
+  // Always return same error message
+  const standardError = { message: 'Invalid credentials' };
+  
+  return { simulateAuthDelay, standardError };
+};
+```
+
+#### 5.7 Database Schema Updates
+
+**Enhanced Domain Storage:**
+```sql
+-- Update sys_tenant table for proper domain indexing
+CREATE INDEX IF NOT EXISTS idx_sys_tenant_domain ON sys_tenant(domain);
+
+-- Ensure domain is stored in lowercase
+ALTER TABLE sys_tenant ADD CONSTRAINT chk_domain_lowercase 
+CHECK (domain = LOWER(domain));
+```
+
+#### 5.8 Testing Strategy
+
+**Test Cases:**
+```typescript
+describe('Domain-based Login', () => {
+  test('sysadmin login (no domain)', async () => {
+    const result = await login('sysadmin', 'password');
+    expect(result.user.isSuperAdmin).toBe(true);
+  });
+  
+  test('tenant user login', async () => {
+    const result = await login('admin@techcorp.com', 'password');
+    expect(result.user.tenantDomain).toBe('techcorp.com');
+  });
+  
+  test('invalid domain returns generic error', async () => {
+    const result = await login('admin@nonexistent.com', 'password');
+    expect(result.error).toBe('Invalid credentials');
+  });
+  
+  test('domain case normalization', async () => {
+    const result = await login('admin@TechCorp.COM', 'password');
+    expect(result.user.tenantDomain).toBe('techcorp.com');
+  });
+});
+```
+
+#### 5.9 Migration Strategy
+
+**Implementation Steps:**
+1. **Phase 5a**: Update domain validation in tenant creation
+2. **Phase 5b**: Implement login parsing logic (backward compatible)
+3. **Phase 5c**: Update frontend login form
+4. **Phase 5d**: Deploy authentication changes
+5. **Phase 5e**: Test and monitor
+
+**Backward Compatibility:**
+- Existing `sysadmin` login continues to work unchanged
+- New domain-based format works alongside existing system
+- No breaking changes to current authentication
+
 ## ✅ Success Criteria
 
 1. **Super Admin can create tenants** with complete form validation
 2. **Schemas are automatically created** with proper naming convention
 3. **RBAC tables are copied** with default roles and permissions
-4. **Tenant admin can login** immediately after creation
+4. **Tenant admin can login** immediately after creation using domain-based format
 5. **All data is properly isolated** by tenant schema
 6. **Error handling works** for all failure scenarios
 7. **Search and table functionality** works smoothly
+8. **Domain-based login works** for `username@domain.com` format
+9. **sysadmin special case** continues to work without domain
+10. **Security measures prevent** domain enumeration and timing attacks
 
-This plan provides a complete roadmap for implementing tenant creation functionality with proper database isolation and user management.
+This plan provides a complete roadmap for implementing tenant creation functionality with proper database isolation, user management, and secure domain-based authentication.
