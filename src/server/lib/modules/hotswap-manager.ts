@@ -305,20 +305,18 @@ export class ModuleHotswapManager {
   }
 
   /**
-   * Clear Node.js require cache for module files
+   * Clear Node.js module cache for ES modules (using dynamic import cache invalidation)
    */
   private clearModuleCache(moduleId: string): void {
     const isProduction = process.env.NODE_ENV === 'production';
     const baseDir = isProduction ? 'dist/src/modules' : 'src/modules';
     const moduleBasePath = path.resolve(baseDir, moduleId);
     
-    // Clear all cached files for this module
-    Object.keys(require.cache).forEach(cacheKey => {
-      if (cacheKey.startsWith(moduleBasePath)) {
-        delete require.cache[cacheKey];
-        console.log(`🗑️ Cleared cache for: ${cacheKey}`);
-      }
-    });
+    // For ES modules, we can't directly clear cache like CommonJS require.cache
+    // Instead, we rely on dynamic imports and timestamp-based cache busting
+    // The module reloading will happen through fresh dynamic imports in the registry
+    console.log(`🗑️ ES Module cache clearing prepared for: ${moduleBasePath}`);
+    console.log(`ℹ️ ES modules will be reloaded through dynamic imports with timestamp cache busting`);
   }
 
   /**
