@@ -1,0 +1,170 @@
+Quick verdict
+
+✅ I agree with their prioritization (namespacing → registries → context injection first; then migrations/ops; then scale).
+
+✅ Their “production reality check” is exactly right.
+
+🔶 I’d slightly tweak the roles stance: keep roles as tenant-owned, but let plugins ship role templates that tenants can opt-in to. Details below.
+
+What I fully endorse (and how to nail it)
+
+Route namespacing
+Mount every plugin under /api/plugins/:pluginId/*. This makes enable/disable a simple gate and prevents collisions.
+
+// host
+app.use(`/api/plugins/${plugin.meta.id}`, pluginRouter);
+
+
+PluginContext (API boundaries)
+Inject capabilities; no direct imports of host internals:
+
+export interface PluginContext {
+  router: Router;
+  rbac: { require: (perm: string): RequestHandler };
+  withTenantTx: <T>(tenantId: string, run: (db: DB) => Promise<T>) => Promise<T>;
+  resolveTenant: (q: { domain?: string; code?: string }) => Promise<{id:string; code:string; schema:string}|null>;
+  config: { getGlobal<T>(k:string):Promise<T|undefined>; getTenant<T>(tid:string,k:string):Promise<T|undefined> };
+  events: { on(n:string,h:(e:any)=>Promise<void>):void; emit(n:string,p:any):Promise<void> };
+  cron: { register(spec:string, job:(ctx:{tenantId?:string})=>Promise<void>): void };
+  log: (msg:string, meta?:object)=>void;
+}
+
+
+This keeps plugins evolvable and testable.
+
+Registry tables (must-have for prod)
+
+-- public
+CREATE TABLE sys_plugins (
+  plugin_id          text PRIMARY KEY,
+  api_version        text NOT NULL,
+  version_installed  text NOT NULL,
+  enabled_global     boolean NOT NULL DEFAULT false,
+  created_at         timestamptz NOT NULL DEFAULT now(),
+  updated_at         timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE sys_tenant_plugins (
+  tenant_id          uuid NOT NULL,
+  plugin_id          text NOT NULL REFERENCES sys_plugins(plugin_id),
+  enabled            boolean NOT NULL DEFAULT false,
+  version_installed  text NOT NULL,
+  config             jsonb NOT NULL DEFAULT '{}'::jsonb,
+  updated_at         timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (tenant_id, plugin_id)
+);
+
+CREATE TYPE plugin_scope AS ENUM ('public','tenant');
+
+CREATE TABLE sys_plugin_migrations (
+  id                 bigserial PRIMARY KEY,
+  plugin_id          text NOT NULL REFERENCES sys_plugins(plugin_id),
+  scope              plugin_scope NOT NULL,
+  tenant_id          uuid NULL,                       -- NULL for public scope
+  name               text NOT NULL,                   -- e.g. 001_init.sql
+  version            text NOT NULL,                   -- plugin version at apply
+  checksum           text NOT NULL,                   -- sha256 of file contents
+  applied_at         timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (plugin_id, scope, tenant_id, name)
+);
+
+
+Why checksums? Detects drift when a migration file changes between environments.
+
+The “roles in plugins” concern (my nuanced stance)
+
+Keep permissions as the true enforcement unit (namespaced: inventory.view, inventory.manage).
+
+Let plugins ship role templates (suggested bundles of permissions), but do not auto-enforce them.
+
+On enable/upgrade, show a “role diff” in the admin UI: “Plugin suggests updating role INVENTORY_MANAGER: +inventory.reconcile”. Tenant admin can apply or ignore.
+
+Store templates for traceability:
+
+CREATE TABLE sys_plugin_role_templates (
+  plugin_id     text NOT NULL,
+  role_key      text NOT NULL,            -- e.g. INVENTORY_MANAGER
+  display_name  text NOT NULL,
+  permissions   text[] NOT NULL,          -- namespaced perms
+  version       text NOT NULL,
+  PRIMARY KEY (plugin_id, role_key, version)
+);
+
+
+Never overwrite tenant roles automatically during plugin upgrades—explicit apply only.
+
+Fine-print that avoids 3am outages
+
+Migration runner semantics
+
+Idempotent: each file applied once (tracked in sys_plugin_migrations).
+
+Advisory locks (pg_try_advisory_lock) per (plugin_id, scope[, tenant_id]) so two nodes never double-run.
+
+Batch tenants (e.g., 50 at a time), resumable with --from <migration> and --tenant <id>.
+
+Dry-run mode: print plan + failing SQL early.
+
+Enable/disable semantics
+
+Disabled → return 403 PLUGIN_DISABLED (not 404), include { pluginId, tenantId } in response and logs.
+
+Health endpoint per plugin: /api/plugins/:id/health.
+
+Observability
+
+Per-plugin metrics (req count, error rate, p95), structured logs with {pluginId, tenantId, route}.
+
+Error envelope that preserves plugin stack traces server-side, returns sanitized codes client-side.
+
+Tenant DB access
+
+Always go through withTenantTx(tenantId, run) that sets SET LOCAL search_path TO <schema>, public on a fresh pooled connection; or fully-qualify table names.
+
+Sanitize identifiers (no string interpolation of schema names without quoting).
+
+Versioning
+
+Plugins must declare meta.api = '1.x'. Host rejects incompatible major versions.
+
+SemVer for plugins; upgrade path: public migrations → per-tenant migrations → flip version_installed.
+
+Front-end
+
+Manifest per plugin (routes/menu/widgets). Host renders based on tenant enablement + permission checks.
+
+If you need hard UI isolation for third parties, load UI via iframe sandbox (separate origin) and expose only a message bridge.
+
+Phased plan (refined with “done means…”)
+
+Phase 1 – High impact, low risk
+
+✅ Namespacing: all plugin routes under /api/plugins/:id.
+
+✅ Context injection in place; remove direct host imports from one pilot plugin.
+
+✅ Registry tables + CRUD in admin UI (toggle enablement, show version).
+
+Done when: enable/disable works per tenant; routes guarded; logs include {pluginId, tenantId}.
+
+Phase 2 – Operational readiness
+
+✅ Migration runner (public + tenant) with idempotency, checksums, advisory locks, dry-run.
+
+✅ Kill switch (env or DB) and health endpoints.
+
+✅ Baseline metrics + structured logging.
+
+✅ Frontend manifest consumption; menu visibility driven by enablement + perms.
+
+Done when: you can upgrade a plugin across N tenants, observe progress, and recover mid-flight.
+
+Phase 3 – Scale & governance
+
+✅ Tenant batching config and backoff; export/cleanup policies on uninstall.
+
+✅ Role templates UI with “diff & apply”.
+
+✅ Sharding plan (when schema count gets high): tenant→DB mapping abstraction in withTenantTx.
+
+Done when: you can safely run upgrades for hundreds+ tenants with predictable SLOs.
