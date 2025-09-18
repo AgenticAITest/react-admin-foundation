@@ -284,31 +284,39 @@ import { readdir } from 'fs/promises';
 import { resolve } from 'path';
 
 export class RuntimePluginLoader {
+  private validatePluginId(pluginId: string): void {
+    if (!/^[a-z0-9_-]+$/.test(pluginId)) {
+      throw new Error(`Invalid plugin ID: ${pluginId}`);
+    }
+  }
+
   async loadPlugins() {
     const enabledPlugins = await this.getEnabledPlugins();
     
     for (const plugin of enabledPlugins) {
       try {
-        // Dynamic import from node_modules
+        this.validatePluginId(plugin.id);
+        
+        // Dynamic ESM import from node_modules (with validation)
         const pluginModule = await import(`@nimbus-plugin/${plugin.id}`);
         
         // Enforce semver API compatibility (fail fast)
         if (!this.isApiCompatible(pluginModule.plugin.apiVersion)) {
-          const error = `Plugin ${plugin.id}@${pluginModule.plugin.version} API version ${pluginModule.plugin.apiVersion} incompatible with host API ${this.hostApiVersion}`;
+          const error = `Plugin ${plugin.id}@${pluginModule.plugin.version} API version ${pluginModule.plugin.apiVersion} incompatible with host API range ${this.hostApiVersionRange}`;
           
-          // Update plugin status to failed
-          await this.updatePluginStatus(plugin.id, req.tenantId, 'failed', error);
+          // Update global plugin status (process-wide loading)
+          await this.updateGlobalPluginStatus(plugin.id, 'failed', error);
           
           // Surface error in admin status
           this.log.error('Plugin load failed', { 
             pluginId: plugin.id, 
             pluginVersion: pluginModule.plugin.version,
             pluginApiVersion: pluginModule.plugin.apiVersion,
-            hostApiVersion: this.hostApiVersion,
+            hostApiVersionRange: this.hostApiVersionRange,
             error 
           });
           
-          throw new Error(error);
+          continue; // Skip failed plugin, continue with others
         }
         
         // Create plugin context
@@ -331,11 +339,51 @@ export class RuntimePluginLoader {
   }
   
   private async getEnabledPlugins() {
-    // Query sys_plugins for globally enabled plugins
-    // Query sys_tenant_plugins for tenant-specific enablement
+    // Query sys_plugins for globally enabled plugins only
+    // Per-tenant enablement is handled by middleware at request time
     return await this.db.select()
       .from(sysPlugins)
       .where(eq(sysPlugins.enabledGlobal, true));
+  }
+  
+  private isApiCompatible(pluginApiVersion: string): boolean {
+    // Enforce semver: plugin API must satisfy host range (e.g., "^1.0.0")
+    return semver.satisfies(pluginApiVersion, this.hostApiVersionRange);
+  }
+  
+  private async updateGlobalPluginStatus(
+    pluginId: string, 
+    status: 'active' | 'failed' | 'disabled',
+    error?: string
+  ) {
+    await this.db.update(sysPlugins)
+      .set({ 
+        status,
+        lastError: error || null,
+        updatedAt: new Date()
+      })
+      .where(eq(sysPlugins.pluginId, pluginId));
+  }
+  
+  // Separate per-tenant status tracking (called from middleware)
+  async updateTenantPluginStatus(
+    pluginId: string, 
+    tenantId: string, 
+    status: 'ready' | 'installing' | 'failed' | 'disabled',
+    error?: string
+  ) {
+    await this.db.update(sysTenantPlugins)
+      .set({ 
+        status,
+        lastHealthAt: new Date(),
+        notes: error || null
+      })
+      .where(
+        and(
+          eq(sysTenantPlugins.pluginId, pluginId),
+          eq(sysTenantPlugins.tenantId, tenantId)
+        )
+      );
   }
 }
 ```
@@ -380,57 +428,102 @@ private async updatePluginStatus(
 ```typescript
 // tools/migration-runner/safe-migration.ts
 export class SafeMigrationRunner {
+  private validatePluginId(pluginId: string): void {
+    if (!/^[a-z0-9_-]+$/.test(pluginId)) {
+      throw new Error(`Invalid plugin ID: ${pluginId}`);
+    }
+  }
+  
+  private validateTenantId(tenantId: string): void {
+    if (!/^[a-z0-9_-]+$/.test(tenantId)) {
+      throw new Error(`Invalid tenant ID: ${tenantId}`);
+    }
+  }
+  
+  private getSchemaName(tenantId: string): string {
+    this.validateTenantId(tenantId);
+    return `tenant_${tenantId}`;
+  }
+
   async runMigration(
     pluginId: string,
     tenantId: string,
     migration: Migration
   ): Promise<MigrationResult> {
-    const lockKey = `plugin_migration_${pluginId}_${tenantId}`;
+    this.validatePluginId(pluginId);
+    this.validateTenantId(tenantId);
     
-    return await this.db.transaction(async (tx) => {
-      // Acquire advisory lock with timeout
-      const lockResult = await tx.query(`
-        SELECT pg_try_advisory_lock(hashtext($1)) as acquired
-      `, [lockKey]);
+    const lockKey = `plugin_migration_${pluginId}_${tenantId}`;
+    const schemaName = this.getSchemaName(tenantId);
+    
+    // Acquire session-level advisory lock (survives transaction boundaries)
+    const lockResult = await this.db.query(`
+      SELECT pg_try_advisory_lock(hashtext($1)) as acquired
+    `, [lockKey]);
+    
+    if (!lockResult.rows[0].acquired) {
+      throw new Error(`Migration already running for ${pluginId}/${tenantId}`);
+    }
+    
+    try {
+      const startTime = Date.now();
       
-      if (!lockResult.rows[0].acquired) {
-        throw new Error(`Migration already running for ${pluginId}/${tenantId}`);
+      // Split CONCURRENTLY operations from transactional operations
+      const { concurrentOps, transactionalOps } = this.splitMigrationOps(migration.sql);
+      
+      // Execute CONCURRENTLY operations outside transaction (autocommit)
+      for (const op of concurrentOps) {
+        await this.db.query('SET lock_timeout = $1', ['30s']);
+        await this.db.query('SET statement_timeout = $1', ['10min']); // Longer for CONCURRENTLY
+        await this.db.query(`SET search_path = ${format('%I', schemaName)}, public`);
+        await this.db.query(op);
       }
       
-      try {
-        // Set safety timeouts
-        await tx.query('SET LOCAL lock_timeout = $1', ['30s']);
-        await tx.query('SET LOCAL statement_timeout = $1', ['5min']);
-        
-        const startTime = Date.now();
-        
-        // Enforce tenant scoping with search_path
-        await tx.query('SET LOCAL search_path = $1, public', [tenantId]);
-        
-        // Use CREATE INDEX CONCURRENTLY to avoid exclusive locks
-        const migrationSql = migration.sql.includes('CREATE INDEX')
-          ? migration.sql.replace(/CREATE INDEX(?!\s+CONCURRENTLY)/g, 'CREATE INDEX CONCURRENTLY')
-          : migration.sql;
+      // Execute remaining operations in transaction
+      if (transactionalOps.length > 0) {
+        await this.db.transaction(async (tx) => {
+          await tx.query('SET LOCAL lock_timeout = $1', ['30s']);
+          await tx.query('SET LOCAL statement_timeout = $1', ['5min']);
+          await tx.query(`SET LOCAL search_path = ${format('%I', schemaName)}, public`);
           
-        await tx.query(migrationSql);
-        
-        const executionTime = Date.now() - startTime;
-        
-        // Record successful migration
-        await this.recordMigrationSuccess(pluginId, tenantId, migration, executionTime);
-        
-        return { success: true, executionTime };
-        
-      } catch (error) {
-        // Track errors for admin visibility
-        await this.recordMigrationFailure(pluginId, tenantId, migration, error);
-        throw error;
-        
-      } finally {
-        // Always release advisory lock
-        await tx.query('SELECT pg_advisory_unlock(hashtext($1))', [lockKey]);
+          for (const op of transactionalOps) {
+            await tx.query(op);
+          }
+        });
       }
-    });
+      
+      const executionTime = Date.now() - startTime;
+      
+      // Record successful migration
+      await this.recordMigrationSuccess(pluginId, tenantId, migration, executionTime);
+      
+      return { success: true, executionTime };
+      
+    } catch (error) {
+      // Track errors for admin visibility
+      await this.recordMigrationFailure(pluginId, tenantId, migration, error);
+      throw error;
+      
+    } finally {
+      // Always release session-level advisory lock
+      await this.db.query('SELECT pg_advisory_unlock(hashtext($1))', [lockKey]);
+    }
+  }
+  
+  private splitMigrationOps(sql: string): { concurrentOps: string[], transactionalOps: string[] } {
+    const statements = sql.split(';').map(s => s.trim()).filter(s => s);
+    const concurrentOps: string[] = [];
+    const transactionalOps: string[] = [];
+    
+    for (const stmt of statements) {
+      if (stmt.includes('CONCURRENTLY')) {
+        concurrentOps.push(stmt);
+      } else {
+        transactionalOps.push(stmt);
+      }
+    }
+    
+    return { concurrentOps, transactionalOps };
   }
 }
 ```
@@ -463,7 +556,7 @@ export async function lintAllPluginPermissions() {
   let hasErrors = false;
   
   for (const pluginFile of pluginDirs) {
-    const pluginModule = await import(pluginFile);
+    const pluginModule = await import(pluginFile); // ESM import
     const result = validatePluginPermissions(pluginModule.plugin);
     
     if (!result.valid) {
@@ -482,25 +575,41 @@ export async function lintAllPluginPermissions() {
 
 ```typescript
 // packages/foundation/sdk/src/plugin-context.ts
+import { format } from 'pg-format';
+
 export class PluginContext {
+  private validateTenantId(tenantId: string): void {
+    // Strict tenant ID validation - only alphanumeric and underscores
+    if (!/^[a-z0-9_]+$/.test(tenantId)) {
+      throw new Error(`Invalid tenant ID: ${tenantId}`);
+    }
+  }
+  
+  private getSchemaName(tenantId: string): string {
+    this.validateTenantId(tenantId);
+    return `tenant_${tenantId}`;
+  }
+
   // Tenant-scoped database access with search_path enforcement
   async withTenantTx<T>(
     tenantId: string, 
     callback: (db: TenantDB) => Promise<T>
   ): Promise<T> {
     return await this.dbPool.transaction(async (tx) => {
-      // Validate tenant ID format
-      if (!isValidTenantId(tenantId)) {
-        throw new Error(`Invalid tenant ID: ${tenantId}`);
-      }
+      // Validate and get canonical schema name
+      const schemaName = this.getSchemaName(tenantId);
       
-      // Always set search_path explicitly - forbid arbitrary schema names
-      await tx.query('SET LOCAL search_path = $1, public', [tenantId]);
+      // Set search_path with proper identifier quoting (fix SQL injection risk)
+      await tx.query(`SET LOCAL search_path = ${format('%I', schemaName)}, public`);
       
       // Verify search_path was set correctly
       const pathResult = await tx.query('SHOW search_path');
-      if (!pathResult.rows[0].search_path.startsWith(tenantId)) {
-        throw new Error(`Failed to set tenant search_path for ${tenantId}`);
+      const currentPath = pathResult.rows[0].search_path.trim();
+      
+      // Check for correct schema name (quoted or unquoted)
+      const expectedPattern = new RegExp(`^"?${schemaName}"?\\s*,\\s*public`);
+      if (!expectedPattern.test(currentPath)) {
+        throw new Error(`Failed to set tenant search_path: expected ${schemaName}, got ${currentPath}`);
       }
       
       return await callback(tx);
@@ -1216,7 +1325,8 @@ hostctl plugins rollback inventory --to 1.5.3 --all-tenants --batch 25
 
 # Migration management
 hostctl migrations run inventory --scope tenant --dry-run
-hostctl migrations run inventory --tenant acme-corp --from 003_add_indexes
+hostctl migrations run inventory --tenant acme-corp --from 003_add_indexes --since 2025-01-01
+hostctl migrations run inventory --tenant acme-corp --since 2025-09-15  # Run all since date
 hostctl migrations status inventory     # Show migration progress
 
 # Plugin data management
