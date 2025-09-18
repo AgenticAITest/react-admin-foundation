@@ -1,0 +1,107 @@
+What’s solid (keep it)
+
+Two-track architecture: Monorepo DX for dev + runtime, versioned plugins in prod. That’s the right split for speed and ops. 
+
+plugin-system-design (2)
+
+Hard namespacing + context injection: Plugins register under /api/plugins/:id and only touch the world via PluginContext (router, rbac, withTenantTx, events, config). This is the crucial boundary. 
+
+plugin-system-design (2)
+
+ 
+
+plugin-system-design (2)
+
+Persistent registry + migration tracking: sys_plugins, sys_tenant_plugins, sys_plugin_migrations (with checksums) are exactly what you need for upgrades, drift detection, and rollback. 
+
+plugin-system-design (2)
+
+Runtime loader flow: discover → API compat check → register → mount → guard by enablement. Clean and production-minded. 
+
+plugin-system-design (2)
+
+Ops surface: admin/CLI for upgrades, batches, rollback—this makes the thing operable day-to-day. 
+
+plugin-system-design (2)
+
+Schema-per-tenant clearly documented with benefits; good alignment with your earlier DB decisions. 
+
+plugin-system-design (2)
+
+What to tighten (before you ship Phase 1)
+
+API compatibility contract (fail fast)
+
+Enforce semver at load: plugin.apiVersion must satisfy host range (e.g., 1.x). Refuse to load with a clear error and surface it in admin status. (You already check compat—formalize fail states and reporting.) 
+
+plugin-system-design (2)
+
+Advisory locks + timeouts in migrations
+
+You mention checksums and batching; add pg_try_advisory_lock(), lock_timeout, statement_timeout, and guidance for CREATE INDEX CONCURRENTLY to avoid long exclusive locks. Track last error per tenant in sys_plugin_migrations notes.
+
+Plugin status model
+
+Add desired_version, current_version, status ENUM('ready','installing','failed','disabled'), and last_health_at to sys_tenant_plugins for better UIs and automation. (Keeps ops from guessing during rollouts.) 
+
+plugin-system-design (2)
+
+Role templates = suggestions (not mutations)
+
+You already treat roles as templates—great. Make “diff & apply” explicit in admin, never auto-apply on upgrade. (You have the handler sketch; wire it to UI.) 
+
+plugin-system-design (2)
+
+Strict permission prefixing
+
+Enforce a linter/validator that all plugin permissions are ${pluginId}.* (e.g., inventory.view). You document namespacing; turn it into a CI check. 
+
+plugin-system-design (2)
+
+Tenant scoping guardrails
+
+Ensure withTenantTx always sets SET LOCAL search_path (or fully-qualified table names) on a fresh pooled connection; forbid plugins from supplying arbitrary schema names. (It’s implied; call it out explicitly in the SDK.) 
+
+plugin-system-design (2)
+
+Strong Phase-2+ add-ons (high ROI)
+
+Supply-chain safety: sign plugins (publish to private registry) and maintain an allowlist by plugin_id + signer. Loader verifies signature before import(). (Pairs well with your runtime loader. ) 
+
+plugin-system-design (2)
+
+Kill switch semantics: you have a pattern—also surface a /health per plugin and propagate kill switch state to the loader so routes can 403 with {pluginId, tenantId} (you’re already doing the 403). Add health to the admin grid. 
+
+plugin-system-design (2)
+
+Per-plugin rate limits & circuit breakers: simple token bucket keyed by {tenantId, pluginId}; trip to 503 with backoff on error spikes.
+
+Zero-downtime data changes: document “expand → backfill → switch reads → contract” and encourage forward-only migrations; keep down.sql only for catastrophic rollback.
+
+Secrets & config: plugin config schema via JSON-Schema; store secrets in KMS/Vault and inject via config.getTenant() indirection (never raw in DB).
+
+Tiny nits (quick fixes)
+
+Prefer ESM import() everywhere (you mix ESM/CJS in examples). 
+
+plugin-system-design (2)
+
+Add a minimal Hello-World plugin in the repo that exercises: register route, permission, a tenant migration, health endpoint, and a tiny UI page (proves end-to-end path).
+
+For the CLI examples, add --from and --since to the migration commands (you already sketch --from in runner).
+
+Callouts I really liked
+
+Frontend manifest with routes/menu/widgets + permission-aware rendering—clean separation of shell vs plugin UI. 
+
+plugin-system-design (2)
+
+Clear upgrade paths: host-locked versions or admin-selected upgrades with batch size and dry-run. That’s how you avoid “all-or-nothing.” 
+
+plugin-system-design (2)
+
+Verdict
+
+This revision lands the essentials: runtime loading, registry + migrations, strict boundaries, and ops tooling. Ship Phase 1 with the compat checks, migration timeouts, and a richer plugin status model and you’ll have a platform you can safely scale and operate. Everything else above slots cleanly into Phase 2 without re-plumbing. 
+
+plugin-system-design (2)

@@ -292,9 +292,23 @@ export class RuntimePluginLoader {
         // Dynamic import from node_modules
         const pluginModule = await import(`@nimbus-plugin/${plugin.id}`);
         
-        // Verify API compatibility
-        if (!this.isCompatible(pluginModule.plugin.apiVersion)) {
-          throw new Error(`Plugin ${plugin.id} API version ${pluginModule.plugin.apiVersion} not compatible with host`);
+        // Enforce semver API compatibility (fail fast)
+        if (!this.isApiCompatible(pluginModule.plugin.apiVersion)) {
+          const error = `Plugin ${plugin.id}@${pluginModule.plugin.version} API version ${pluginModule.plugin.apiVersion} incompatible with host API ${this.hostApiVersion}`;
+          
+          // Update plugin status to failed
+          await this.updatePluginStatus(plugin.id, req.tenantId, 'failed', error);
+          
+          // Surface error in admin status
+          this.log.error('Plugin load failed', { 
+            pluginId: plugin.id, 
+            pluginVersion: pluginModule.plugin.version,
+            pluginApiVersion: pluginModule.plugin.apiVersion,
+            hostApiVersion: this.hostApiVersion,
+            error 
+          });
+          
+          throw new Error(error);
         }
         
         // Create plugin context
@@ -326,7 +340,190 @@ export class RuntimePluginLoader {
 }
 ```
 
-### 4. Plugin Registry System
+### 4. Production Safety Features (Phase 1 Requirements)
+
+Based on architect feedback, these safety features must be implemented before Phase 1:
+
+#### API Compatibility Contract (Fail Fast)
+
+```typescript
+// Enhanced compatibility checking with semver enforcement
+private isApiCompatible(pluginApiVersion: string): boolean {
+  // Enforce semver: plugin API must satisfy host range (e.g., 1.x)
+  return semver.satisfies(pluginApiVersion, this.hostApiVersionRange);
+}
+
+// Status tracking for admin visibility
+private async updatePluginStatus(
+  pluginId: string, 
+  tenantId: string, 
+  status: 'ready' | 'installing' | 'failed' | 'disabled',
+  error?: string
+) {
+  await this.db.update(sysTenantPlugins)
+    .set({ 
+      status,
+      lastHealthAt: new Date(),
+      notes: error || null
+    })
+    .where(
+      and(
+        eq(sysTenantPlugins.pluginId, pluginId),
+        eq(sysTenantPlugins.tenantId, tenantId)
+      )
+    );
+}
+```
+
+#### Migration Safety with Advisory Locks
+
+```typescript
+// tools/migration-runner/safe-migration.ts
+export class SafeMigrationRunner {
+  async runMigration(
+    pluginId: string,
+    tenantId: string,
+    migration: Migration
+  ): Promise<MigrationResult> {
+    const lockKey = `plugin_migration_${pluginId}_${tenantId}`;
+    
+    return await this.db.transaction(async (tx) => {
+      // Acquire advisory lock with timeout
+      const lockResult = await tx.query(`
+        SELECT pg_try_advisory_lock(hashtext($1)) as acquired
+      `, [lockKey]);
+      
+      if (!lockResult.rows[0].acquired) {
+        throw new Error(`Migration already running for ${pluginId}/${tenantId}`);
+      }
+      
+      try {
+        // Set safety timeouts
+        await tx.query('SET LOCAL lock_timeout = $1', ['30s']);
+        await tx.query('SET LOCAL statement_timeout = $1', ['5min']);
+        
+        const startTime = Date.now();
+        
+        // Enforce tenant scoping with search_path
+        await tx.query('SET LOCAL search_path = $1, public', [tenantId]);
+        
+        // Use CREATE INDEX CONCURRENTLY to avoid exclusive locks
+        const migrationSql = migration.sql.includes('CREATE INDEX')
+          ? migration.sql.replace(/CREATE INDEX(?!\s+CONCURRENTLY)/g, 'CREATE INDEX CONCURRENTLY')
+          : migration.sql;
+          
+        await tx.query(migrationSql);
+        
+        const executionTime = Date.now() - startTime;
+        
+        // Record successful migration
+        await this.recordMigrationSuccess(pluginId, tenantId, migration, executionTime);
+        
+        return { success: true, executionTime };
+        
+      } catch (error) {
+        // Track errors for admin visibility
+        await this.recordMigrationFailure(pluginId, tenantId, migration, error);
+        throw error;
+        
+      } finally {
+        // Always release advisory lock
+        await tx.query('SELECT pg_advisory_unlock(hashtext($1))', [lockKey]);
+      }
+    });
+  }
+}
+```
+
+#### Strict Permission Prefixing
+
+```typescript
+// tools/plugin-validator/permission-validator.ts
+export function validatePluginPermissions(plugin: PluginDefinition): ValidationResult {
+  const errors: string[] = [];
+  
+  for (const permission of plugin.permissions) {
+    // Enforce ${pluginId}.* prefixing (architect requirement)
+    if (!permission.startsWith(`${plugin.id}.`)) {
+      errors.push(`Permission '${permission}' must start with '${plugin.id}.'`);
+    }
+    
+    // Validate permission format
+    if (!/^[a-z0-9_-]+\.[a-z0-9_.]+$/.test(permission)) {
+      errors.push(`Permission '${permission}' contains invalid characters`);
+    }
+  }
+  
+  return { valid: errors.length === 0, errors };
+}
+
+// CI linting - enforce in pipeline
+export async function lintAllPluginPermissions() {
+  const pluginDirs = await glob('packages/plugins/*/src/server/index.ts');
+  let hasErrors = false;
+  
+  for (const pluginFile of pluginDirs) {
+    const pluginModule = await import(pluginFile);
+    const result = validatePluginPermissions(pluginModule.plugin);
+    
+    if (!result.valid) {
+      console.error(`❌ ${pluginFile}:`);
+      result.errors.forEach(error => console.error(`   ${error}`));
+      hasErrors = true;
+    }
+  }
+  
+  if (hasErrors) process.exit(1);
+  console.log('✅ All plugin permissions follow naming conventions');
+}
+```
+
+#### Tenant Scoping Guardrails
+
+```typescript
+// packages/foundation/sdk/src/plugin-context.ts
+export class PluginContext {
+  // Tenant-scoped database access with search_path enforcement
+  async withTenantTx<T>(
+    tenantId: string, 
+    callback: (db: TenantDB) => Promise<T>
+  ): Promise<T> {
+    return await this.dbPool.transaction(async (tx) => {
+      // Validate tenant ID format
+      if (!isValidTenantId(tenantId)) {
+        throw new Error(`Invalid tenant ID: ${tenantId}`);
+      }
+      
+      // Always set search_path explicitly - forbid arbitrary schema names
+      await tx.query('SET LOCAL search_path = $1, public', [tenantId]);
+      
+      // Verify search_path was set correctly
+      const pathResult = await tx.query('SHOW search_path');
+      if (!pathResult.rows[0].search_path.startsWith(tenantId)) {
+        throw new Error(`Failed to set tenant search_path for ${tenantId}`);
+      }
+      
+      return await callback(tx);
+    });
+  }
+  
+  // RBAC with strict plugin permission namespacing
+  get rbac() {
+    return {
+      require: (permission: string) => (req: Request, res: Response, next: NextFunction) => {
+        // Enforce permission must be namespaced to this plugin
+        if (!permission.startsWith(`${this.pluginId}.`)) {
+          throw new Error(`Permission ${permission} must be prefixed with ${this.pluginId}.`);
+        }
+        
+        return this.baseRbac.require(permission)(req, res, next);
+      }
+    };
+  }
+}
+```
+
+### 5. Plugin Registry System
 
 The system maintains a persistent registry of plugins with full lifecycle tracking:
 
@@ -348,10 +545,18 @@ CREATE TABLE sys_tenant_plugins (
   tenant_id          uuid NOT NULL,
   plugin_id          text NOT NULL REFERENCES sys_plugins(plugin_id),
   enabled            boolean NOT NULL DEFAULT false,
-  version_installed  text NOT NULL,
+  
+  -- Enhanced status tracking for operations visibility
+  desired_version    text NOT NULL,
+  current_version    text,
+  status             text NOT NULL DEFAULT 'ready' CHECK (status IN ('ready','installing','failed','disabled')),
+  last_health_at     timestamptz DEFAULT now(),
+  
   config             jsonb NOT NULL DEFAULT '{}'::jsonb,
+  notes              text, -- Error messages, upgrade logs
   updated_at         timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (tenant_id, plugin_id)
+  PRIMARY KEY (tenant_id, plugin_id),
+  INDEX idx_tenant_plugins_status (tenant_id, status)
 );
 
 -- Migration tracking with drift detection
@@ -366,7 +571,14 @@ CREATE TABLE sys_plugin_migrations (
   version            text NOT NULL,                   -- plugin version at apply
   checksum           text NOT NULL,                   -- sha256 of file contents
   applied_at         timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (plugin_id, scope, tenant_id, name)
+  
+  -- Enhanced error tracking and safety (architect feedback)
+  execution_time_ms  integer,
+  last_error         text,                           -- Track failures for admin visibility
+  retry_count        integer DEFAULT 0,
+  
+  UNIQUE (plugin_id, scope, tenant_id, name),
+  INDEX idx_plugin_migrations_errors (last_error) WHERE last_error IS NOT NULL
 );
 
 -- Role template tracking
