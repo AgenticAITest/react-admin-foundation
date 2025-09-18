@@ -1,0 +1,173 @@
+Not if you set it up right. A monorepo can be easier than many repos—if you use the right workflow. Here’s a practical, low-friction way to change a module/plugin in a monorepo without pain, and how that flows from dev → release → tenant upgrade.
+
+The two tracks you’ll use
+
+Track A (dev, first-party): Plugins live in the monorepo as workspace packages (e.g., @nimbus-plugin/inventory). The host app depends on them via workspace, so you get instant rebuilds and hot reloads.
+
+Track B (prod, runtime plugins): CI publishes changed plugins to a private registry (GitHub Packages/Verdaccio). The host’s runtime loader discovers them from node_modules and your registry tables run migrations + flip versions per tenant.
+
+You develop in one repo, but you ship independent versioned units.
+
+How a change actually flows (step by step)
+0) Repo setup (once)
+
+Use pnpm workspaces (or Yarn/Nx/Turborepo).
+
+Each plugin is a package:
+
+packages/
+  plugins/
+    inventory/
+      package.json   # name: @nimbus-plugin/inventory
+      src/server/...
+      src/frontend/...
+      migrations/public/*.sql
+      migrations/tenant/*.sql
+apps/
+  host-api/
+  host-web/
+
+
+Host depends on plugins via workspace:
+
+// apps/host-api/package.json
+"dependencies": {
+  "@nimbus-plugin/inventory": "workspace:*"
+}
+
+
+Add Changesets (or semantic-release) to version only what changed.
+
+1) Make your change (dev loop)
+
+pnpm -F @nimbus-plugin/inventory dev (plugin runs in watch/library mode)
+
+pnpm -F @nimbus-plugin/inventory test (unit tests)
+
+Host runs with HMR and picks the new build instantly:
+
+backend: export a register(ctx) and let the host hot-reload on file changes
+
+frontend: Vite library mode or iframe dev server (http://localhost:5175) if you sandbox UI
+
+Result: You edit the plugin; only the plugin rebuilds; host reloads—no full repo rebuild.
+
+2) Commit + PR (only plugin is touched)
+
+Commit includes:
+
+code changes
+
+new migration files (timestamped) if schema changes (e.g., 20250918_001_add_index.sql)
+
+a changeset like chore: bump @nimbus-plugin/inventory minor
+
+CI runs affected graph only (Nx/Turbo):
+
+build + test @nimbus-plugin/inventory
+
+integration tests against a host “playground” app
+
+3) Release (CI automation)
+
+Changesets bumps only changed packages (e.g., @nimbus-plugin/inventory@1.6.0)
+
+CI publishes artifacts to private NPM.
+
+Host API/Web do not need to rebuild unless they also changed.
+
+4) Deploy / Upgrade tenants
+
+Two options—pick what fits your ops:
+
+A) Host locks plugin versions
+
+You bump host’s package.json to @nimbus-plugin/inventory@1.6.0
+
+Deploy host → on startup (or via “Apply Updates” button), runtime loader:
+
+detects plugin version change
+
+runs public migrations
+
+runs tenant migrations in batches (idempotent, checksummed)
+
+updates sys_plugins / sys_tenant_plugins.version_installed
+
+Host serves /api/plugins/inventory/* immediately at new version
+
+B) Host resolves latest allowed
+
+Host reads a policy (allowlist/range), e.g. ^1.0.0
+
+Admin UI → “Upgrade plugin inventory to 1.6.0”
+
+Same 1→4 steps above, but you didn’t touch host code at all
+
+Rollback: keep previous N versions cached. Admin clicks “Rollback to 1.5.3”; runner applies down.sql where available or uses a logical revert script; version_installed flips back.
+
+Why this isn’t cumbersome
+
+Only affected packages rebuild/test. Nx/Turborepo cache + graph awareness keep CI fast.
+
+Changes are localized. Plugin boundaries are enforced via PluginContext—no spelunking across the host.
+
+Versioning is automatic. Changesets bumps just the plugin you touched.
+
+Ops are predictable. Registry tables + migration history + advisory locks mean upgrades are resumable and safe across hundreds of tenants.
+
+Dev UX is great. Workspace symlinks + HMR feel like one codebase; publishing makes them independent in prod.
+
+Day-to-day commands you’ll actually run
+
+Local dev
+
+pnpm i
+pnpm -F @nimbus-plugin/inventory dev      # plugin watch build
+pnpm -F apps/host-api dev                 # host API
+pnpm -F apps/host-web dev                 # host web (loads plugin UI)
+
+
+Add a migration (tenant scope)
+
+# create file packages/plugins/inventory/migrations/tenant/20250918_001_add_column.sql
+pnpm -F @nimbus-plugin/inventory test
+
+
+Propose a release
+
+pnpm changeset                          # pick @nimbus-plugin/inventory, choose minor/patch
+git commit -m "feat(inventory): add cycle count page"
+
+
+CI (auto)
+
+pnpm -r build --filter ...affected
+pnpm -r test --filter ...affected
+pnpm changeset version
+pnpm -r publish --access restricted
+
+
+Ops (admin UI or CLI)
+
+# Upgrade plugin across tenants in batches of 50
+hostctl plugins upgrade inventory --to 1.6.0 --batch 50 --dry-run
+hostctl plugins upgrade inventory --to 1.6.0 --batch 50
+
+Gotchas & how to avoid them
+
+“workspace:*” in published deps → never publish with workspace ranges. Use Changesets to rewrite to the real version at publish.
+
+Cross-package imports → only import via the public SDK; never deep-import host internals.
+
+Breaking host API → bump host apiVersion (e.g., 1.x → 2.x) and fail plugin load with a clear error.
+
+Long migration windows → run tenant migrations on demand (per tenant on first use) or as a background job with checkpoints; always idempotent.
+
+Third-party plugins → render UI in iframes (separate origin) and consider out-of-process/Worker for backend code.
+
+Bottom line
+
+A monorepo isn’t cumbersome for module changes when paired with workspaces, an affected-graph build, and a runtime plugin loader. You edit a single plugin, get instant feedback locally, ship a versioned package from CI, and the host upgrades tenants safely—no repo-wide churn, no giant rebuilds.
+
+If you want, I can sketch the exact pnpm-workspace.yaml, a sample Changesets config, and the minimal hostctl CLI stub to run upgrades in batches.
