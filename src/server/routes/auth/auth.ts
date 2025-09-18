@@ -633,72 +633,133 @@ authRoutes.post('/refresh', (req, res) => {
  */
 authRoutes.get('/user', authenticated(), async (req, res) => {
   if (req.user) {
-    // First get the user
-    const user = await db.query.user.findFirst({
-      columns: {
-        id: true,
-        username: true,
-        fullname: true,
-        email: true,
-        avatar: true,
-        status: true,
-        isSuperAdmin: true
-      },
-      where: eq(table.user.username, req.user?.username),
-      with: {
-        activeTenant: {
-          columns: {
-            id: true,
-            code: true,
-            name: true,
-            description: true,
+    let user: any = null;
+    let roles: string[] = [];
+    let permissions: string[] = [];
+
+    if (req.user.isSuperAdmin) {
+      // System user - lookup in system table
+      user = await db.query.user.findFirst({
+        columns: {
+          id: true,
+          username: true,
+          fullname: true,
+          email: true,
+          avatar: true,
+          status: true,
+          isSuperAdmin: true
+        },
+        where: eq(table.user.username, req.user?.username),
+        with: {
+          activeTenant: {
+            columns: {
+              id: true,
+              code: true,
+              name: true,
+              description: true,
+            }
           }
         }
+      });
+
+      if (!user) {
+        res.status(404).json({ message: 'Username not found' });
+        return;
       }
-    });
 
-    if (!user) {
-      res.status(404).json({ message: 'Username not found' });
-      return
-    };
-
-    // Then get roles and permissions for the active tenant
-    const rolesWithPermissions = await db.query.userRole.findMany({
-      where: and(
-        eq(table.userRole.userId, user.id),
-        eq(table.userRole.tenantId, user.activeTenant.id)
-      ),
-      with: {
-        role: {
-          columns: {
-            code: true
-          },
-          with: {
-            permissions: {
-              where: eq(table.rolePermission.tenantId, user.activeTenant.id),
-              with: {
-                permission: {
-                  columns: {
-                    code: true
+      // Get roles and permissions for system user
+      const rolesWithPermissions = await db.query.userRole.findMany({
+        where: and(
+          eq(table.userRole.userId, user.id),
+          eq(table.userRole.tenantId, user.activeTenant.id)
+        ),
+        with: {
+          role: {
+            columns: {
+              code: true
+            },
+            with: {
+              permissions: {
+                where: eq(table.rolePermission.tenantId, user.activeTenant.id),
+                with: {
+                  permission: {
+                    columns: {
+                      code: true
+                    }
                   }
                 }
               }
             }
           }
         }
+      });
+
+      roles = rolesWithPermissions?.map((ur) => ur.role.code) || [];
+      permissions = rolesWithPermissions?.flatMap((ur) => ur.role.permissions?.map((rp) => rp.permission.code)) || [];
+    } else {
+      // Tenant user - use tenant-scoped database connection
+      const tenantDb = req.db!; // Set by authenticated middleware
+
+      // Get tenant info first
+      const tenantInfo = await db.select().from(table.tenant).where(eq(table.tenant.id, req.user.activeTenantId)).limit(1);
+      const tenant = tenantInfo[0];
+
+      if (!tenant) {
+        res.status(404).json({ message: 'Tenant not found' });
+        return;
       }
-    });
 
-    // Combine the results
-    const result = {
-      ...user,
-      roles: rolesWithPermissions.map(ur => ({
-        role: ur.role
-      }))
-    };
+      // Query user from tenant schema using raw SQL (since req.db is postgres client)
+      const { TenantDatabaseManager } = await import('src/server/lib/db/tenant-db');
+      const manager = TenantDatabaseManager.getInstance();
+      const client = await manager.getTenantClient(req.user.activeTenantId);
+      
+      const schemaName = `tenant_${tenant.code.toLowerCase()}`;
+      const userResults = await client.unsafe(`
+        SELECT id, username, fullname, email, status 
+        FROM ${schemaName}.users 
+        WHERE username = $1 AND status = 'active' 
+        LIMIT 1
+      `, [req.user.username]) as Array<{ id: string; username: string; fullname: string; email: string; status: 'active'|'inactive' }>;
 
-    const roles = result?.roles?.map((role) => role.role.code) || [];
-    const permissions = result?.roles?.flatMap((role) => role.role.permissions?.map((permission) => permission.permission.code)) || [];
+      if (userResults.length === 0) {
+        res.status(404).json({ message: 'Username not found' });
+        return;
+      }
+
+      user = {
+        ...userResults[0],
+        isSuperAdmin: false,
+        activeTenant: {
+          id: tenant.id,
+          code: tenant.code,
+          name: tenant.name,
+          description: tenant.description
+        }
+      };
+
+      // Get roles for tenant user
+      const roleResults = await client.unsafe(`
+        SELECT r.code as role_code
+        FROM ${schemaName}.user_roles ur
+        JOIN ${schemaName}.roles r ON ur.role_id = r.id
+        WHERE ur.user_id = $1
+      `, [user.id]) as Array<{ role_code: string }>;
+
+      roles = roleResults.map(r => r.role_code);
+
+      // Get permissions for tenant user
+      const permissionResults = await client.unsafe(`
+        SELECT DISTINCT p.code as permission_code
+        FROM ${schemaName}.user_roles ur
+        JOIN ${schemaName}.role_permissions rp ON ur.role_id = rp.role_id  
+        JOIN ${schemaName}.permissions p ON rp.permission_id = p.id
+        WHERE ur.user_id = $1
+      `, [user.id]) as Array<{ permission_code: string }>;
+
+      permissions = permissionResults.map(p => p.permission_code);
+    }
+
     res.json({
       ...user,
       roles,
