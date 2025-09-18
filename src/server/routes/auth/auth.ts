@@ -147,6 +147,10 @@ authRoutes.post('/login', validateData(userLoginSchema), async (req, res) => {
     res.json({ accessToken, refreshToken });
 
   } catch (error) {
+    // LOG THE ACTUAL ERROR FOR DEBUGGING
+    console.log('❌ LOGIN ERROR:', error);
+    console.log('❌ Error message:', (error as Error).message);
+    console.log('❌ Error stack:', (error as Error).stack);
     // Always return generic error message for security (prevent enumeration)
     return res.status(400).json({ message: 'Invalid credentials' });
   }
