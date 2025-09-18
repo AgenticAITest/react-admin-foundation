@@ -2,15 +2,16 @@
 
 ## Overview
 
-This document outlines the design for a plugin-based architecture that enables business analysts to develop functional modules using AI assistance, which can then be seamlessly integrated into the main application.
+This document outlines the design for a production-ready plugin system that enables business analysts to develop functional modules using AI assistance. The system provides true runtime plugin capabilities with proper isolation, lifecycle management, and operational controls needed for enterprise deployment.
 
 ## Core Design Principles
 
-1. **Standardization**: All modules follow identical patterns and interfaces
-2. **Isolation**: Modules can be developed independently without conflicts
-3. **Integration**: Seamless merging with automatic registration and discovery
-4. **Simplicity**: Business analysts need minimal technical knowledge
-5. **Scalability**: Foundation supports unlimited business modules
+1. **Standardization**: All plugins follow identical patterns and interfaces
+2. **Isolation**: Plugins operate through controlled API boundaries without direct system access
+3. **Runtime Control**: Plugins can be enabled/disabled per tenant without code changes
+4. **Operational Safety**: Built-in migration management, observability, and kill switches
+5. **Scalability**: Architecture supports hundreds of tenants and dozens of plugins
+6. **Governance**: Clear separation between plugin suggestions and tenant administrative control
 
 ## Plugin System Structure
 
@@ -22,10 +23,10 @@ src/
 │   ├── server/
 │   ├── client/
 │   └── shared/
-├── modules/             # All business modules
-│   ├── module-registry.ts    # Auto-generated module registry
-│   ├── inventory/            # Example: Inventory Management Module
-│   │   ├── module.config.ts  # Module configuration & metadata
+├── plugins/             # All business plugins
+│   ├── plugin-registry.ts    # Auto-generated plugin registry
+│   ├── inventory/            # Example: Inventory Management Plugin
+│   │   ├── plugin.config.ts  # Plugin configuration & metadata
 │   │   ├── server/
 │   │   │   ├── routes/       # API endpoints
 │   │   │   ├── schemas/      # Validation schemas
@@ -33,95 +34,159 @@ src/
 │   │   │   └── types/        # TypeScript interfaces
 │   │   ├── client/
 │   │   │   ├── pages/        # React pages/components
-│   │   │   ├── components/   # Module-specific UI components
+│   │   │   ├── components/   # Plugin-specific UI components
 │   │   │   ├── hooks/        # Custom React hooks
+│   │   │   ├── manifest.ts   # Frontend integration manifest
 │   │   │   └── types/        # Frontend type definitions
 │   │   ├── database/
 │   │   │   ├── schema.ts     # Database tables & relations
+│   │   │   ├── migrations/   # Public and tenant migrations
+│   │   │   │   ├── public/   # Cross-tenant migrations
+│   │   │   │   └── tenant/   # Per-tenant migrations
 │   │   │   └── seed.ts       # Initial data
 │   │   ├── permissions/
-│   │   │   └── permissions.ts # Module permissions & roles
-│   │   └── README.md         # Module documentation
-│   ├── sales/               # Another business module
-│   └── reporting/           # Another business module
-└── tools/                   # Development and merge tools
-    ├── module-generator/    # Scaffolding tools
-    ├── merge-validator/     # Pre-merge validation
-    └── conflict-detector/   # Detect module conflicts
+│   │   │   ├── permissions.ts # Plugin permissions
+│   │   │   └── role-templates.ts # Suggested role templates
+│   │   └── README.md         # Plugin documentation
+│   ├── sales/               # Another business plugin
+│   └── reporting/           # Another business plugin
+└── tools/                   # Development and deployment tools
+    ├── plugin-generator/    # Scaffolding tools
+    ├── migration-runner/    # Plugin migration management
+    ├── plugin-validator/    # Pre-deployment validation
+    └── conflict-detector/   # Detect plugin conflicts
 ```
 
-### 2. Module Configuration System
+### 2. Plugin Configuration System
 
-Each module has a `module.config.ts` file that defines its metadata and integration requirements:
+Each plugin has a `plugin.config.ts` file that defines its metadata and runtime requirements:
 
 ```typescript
-// modules/inventory/module.config.ts
-export const inventoryModule = {
-  // Basic module information
+// plugins/inventory/plugin.config.ts
+export const inventoryPlugin = {
+  // Plugin identity and versioning
   id: "inventory",
   name: "Inventory Management",
-  version: "1.0.0",
+  version: "1.2.0",
+  apiVersion: "1.0", // Host API compatibility
   description: "Complete inventory tracking and management system",
   author: "Business Analyst Name",
   
   // System integration
-  dependencies: [], // Other modules this depends on
-  permissions: ["inventory.view", "inventory.add", "inventory.edit", "inventory.delete"],
-  roles: ["INVENTORY_MANAGER", "WAREHOUSE_STAFF"],
+  dependencies: [], // Other plugins this depends on
+  permissions: [
+    "inventory.view", 
+    "inventory.add", 
+    "inventory.edit", 
+    "inventory.delete",
+    "inventory.reconcile"
+  ],
+  
+  // Role templates (suggestions only - tenant decides)
+  roleTemplates: [
+    {
+      key: "INVENTORY_MANAGER",
+      displayName: "Inventory Manager", 
+      permissions: ["inventory.view", "inventory.add", "inventory.edit", "inventory.delete", "inventory.reconcile"]
+    },
+    {
+      key: "WAREHOUSE_STAFF",
+      displayName: "Warehouse Staff",
+      permissions: ["inventory.view", "inventory.add"]
+    }
+  ],
   
   // Database requirements
   database: {
     tables: ["inventory_items", "inventory_categories", "stock_movements"],
-    requiresSeeding: true
+    requiresSeeding: true,
+    migrationPath: "./database/migrations"
   },
   
-  // API endpoints this module provides
-  apiRoutes: {
-    prefix: "/api/inventory",
-    endpoints: [
-      { path: "/items", methods: ["GET", "POST", "PUT", "DELETE"] },
-      { path: "/categories", methods: ["GET", "POST"] },
-      { path: "/stock-movements", methods: ["GET", "POST"] }
-    ]
-  },
-  
-  // Frontend integration
-  navigation: {
-    section: "Operations",
-    items: [
-      { path: "/console/inventory/items", label: "Items", icon: "Package" },
-      { path: "/console/inventory/categories", label: "Categories", icon: "Tags" },
-      { path: "/console/inventory/reports", label: "Reports", icon: "BarChart" }
-    ]
-  },
-  
-  // Feature flags
+  // Feature configuration
   features: {
     barcodeScanning: true,
     lowStockAlerts: true,
     exportReports: true
-  }
+  },
+  
+  // Runtime capabilities needed
+  capabilities: [
+    "database", "cron", "events", "config"
+  ]
 }
 ```
 
-### 3. Automatic Module Registration
+### 3. Plugin Registry System
 
-The system automatically discovers and registers modules:
+The system maintains a persistent registry of plugins with full lifecycle tracking:
+
+#### Database Registry Tables
+
+```sql
+-- Global plugin registry
+CREATE TABLE sys_plugins (
+  plugin_id          text PRIMARY KEY,
+  api_version        text NOT NULL,
+  version_installed  text NOT NULL,
+  enabled_global     boolean NOT NULL DEFAULT false,
+  created_at         timestamptz NOT NULL DEFAULT now(),
+  updated_at         timestamptz NOT NULL DEFAULT now()
+);
+
+-- Per-tenant plugin enablement and configuration
+CREATE TABLE sys_tenant_plugins (
+  tenant_id          uuid NOT NULL,
+  plugin_id          text NOT NULL REFERENCES sys_plugins(plugin_id),
+  enabled            boolean NOT NULL DEFAULT false,
+  version_installed  text NOT NULL,
+  config             jsonb NOT NULL DEFAULT '{}'::jsonb,
+  updated_at         timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (tenant_id, plugin_id)
+);
+
+-- Migration tracking with drift detection
+CREATE TYPE plugin_scope AS ENUM ('public','tenant');
+
+CREATE TABLE sys_plugin_migrations (
+  id                 bigserial PRIMARY KEY,
+  plugin_id          text NOT NULL REFERENCES sys_plugins(plugin_id),
+  scope              plugin_scope NOT NULL,
+  tenant_id          uuid NULL,                       -- NULL for public scope
+  name               text NOT NULL,                   -- e.g. 001_init.sql
+  version            text NOT NULL,                   -- plugin version at apply
+  checksum           text NOT NULL,                   -- sha256 of file contents
+  applied_at         timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (plugin_id, scope, tenant_id, name)
+);
+
+-- Role template tracking
+CREATE TABLE sys_plugin_role_templates (
+  plugin_id     text NOT NULL,
+  role_key      text NOT NULL,            -- e.g. INVENTORY_MANAGER
+  display_name  text NOT NULL,
+  permissions   text[] NOT NULL,          -- namespaced perms
+  version       text NOT NULL,
+  PRIMARY KEY (plugin_id, role_key, version)
+);
+```
+
+#### Runtime Plugin Registry
 
 ```typescript
-// modules/module-registry.ts (auto-generated)
-import { inventoryModule } from './inventory/module.config';
-import { salesModule } from './sales/module.config';
-import { reportingModule } from './reporting/module.config';
+// plugins/plugin-registry.ts (auto-generated)
+import { inventoryPlugin } from './inventory/plugin.config';
+import { salesPlugin } from './sales/plugin.config';
+import { reportingPlugin } from './reporting/plugin.config';
 
-export const moduleRegistry = {
-  inventory: inventoryModule,
-  sales: salesModule,
-  reporting: reportingModule
+export const pluginRegistry = {
+  inventory: inventoryPlugin,
+  sales: salesPlugin,
+  reporting: reportingPlugin
 };
 
-export type ModuleId = keyof typeof moduleRegistry;
-export type ModuleConfig = typeof moduleRegistry[ModuleId];
+export type PluginId = keyof typeof pluginRegistry;
+export type PluginConfig = typeof pluginRegistry[PluginId];
 ```
 
 ### 4. Database Architecture: Schema-Per-Tenant
@@ -243,64 +308,191 @@ export const deployModuleToAllTenants = async (moduleName: string) => {
 ✅ **Simple Development**: Business analysts write clean code without tenant complexity
 ```
 
-### 5. API Route Pattern
+### 5. Plugin Context Injection System
 
-All modules follow the same API structure:
+Plugins receive a controlled context with all needed capabilities, preventing direct access to system internals:
+
+#### Plugin Context Interface
 
 ```typescript
-// modules/inventory/server/routes/items.ts
-import { Router } from 'express';
-import { authenticated, authorized } from '@foundation/server/middleware/authMiddleware';
-import { validateData } from '@foundation/server/middleware/validationMiddleware';
-import { inventoryItemSchema } from '../schemas/inventorySchemas';
-
-const itemsRouter = Router();
-
-// All routes require authentication
-itemsRouter.use(authenticated());
-
-/**
- * @swagger
- * /api/inventory/items:
- *   get:
- *     tags:
- *       - Inventory - Items
- *     summary: Get inventory items
- *     security:
- *       - bearerAuth: []
- */
-itemsRouter.get("/", 
-  authorized('INVENTORY_MANAGER', 'inventory.view'), 
-  async (req, res) => {
-    // Standard pagination, filtering, sorting pattern
-    // Implementation follows foundation patterns
-  }
-);
-
-itemsRouter.post("/", 
-  authorized('INVENTORY_MANAGER', 'inventory.add'),
-  validateData(inventoryItemSchema),
-  async (req, res) => {
-    // Create new item with tenant scoping
-  }
-);
-
-export default itemsRouter;
+export interface PluginContext {
+  router: Router;
+  rbac: { 
+    require: (perm: string) => RequestHandler 
+  };
+  withTenantTx: <T>(tenantId: string, run: (db: DB) => Promise<T>) => Promise<T>;
+  resolveTenant: (q: { domain?: string; code?: string }) => Promise<{id:string; code:string; schema:string}|null>;
+  config: { 
+    getGlobal<T>(k:string):Promise<T|undefined>; 
+    getTenant<T>(tid:string,k:string):Promise<T|undefined> 
+  };
+  events: { 
+    on(n:string,h:(e:any)=>Promise<void>):void; 
+    emit(n:string,p:any):Promise<void> 
+  };
+  cron: { 
+    register(spec:string, job:(ctx:{tenantId?:string})=>Promise<void>): void 
+  };
+  log: (msg:string, meta?:object)=>void;
+}
 ```
 
-### 6. Frontend Integration Pattern
-
-Module pages integrate seamlessly with the foundation:
+#### Plugin Registration Pattern
 
 ```typescript
-// modules/inventory/client/pages/InventoryItemsPage.tsx
+// plugins/inventory/server/index.ts
+import { PluginContext } from '@foundation/types/plugin';
+
+export const register = (ctx: PluginContext) => {
+  const { router, rbac, withTenantTx, log } = ctx;
+
+  /**
+   * @swagger
+   * /api/plugins/inventory/items:
+   *   get:
+   *     tags:
+   *       - Inventory - Items
+   *     summary: Get inventory items
+   *     security:
+   *       - bearerAuth: []
+   */
+  router.get("/items", 
+    rbac.require('inventory.view'),
+    async (req, res) => {
+      try {
+        const result = await withTenantTx(req.tenantId, async (db) => {
+          // Clean database access with automatic tenant scoping
+          return await db.select().from(inventoryItems);
+        });
+        
+        res.json(result);
+      } catch (error) {
+        log('Error fetching inventory items', { 
+          error: error.message, 
+          tenantId: req.tenantId 
+        });
+        res.status(500).json({ error: 'INVENTORY_FETCH_FAILED' });
+      }
+    }
+  );
+
+  router.post("/items", 
+    rbac.require('inventory.add'),
+    async (req, res) => {
+      await withTenantTx(req.tenantId, async (db) => {
+        // Tenant-scoped database operations
+        return await db.insert(inventoryItems).values(req.body);
+      });
+    }
+  );
+};
+```
+
+#### Host Integration
+
+```typescript
+// foundation/server/plugin-loader.ts
+import { pluginRegistry } from '@plugins/plugin-registry';
+
+export const loadPlugins = (app: Express) => {
+  for (const [pluginId, config] of Object.entries(pluginRegistry)) {
+    // Namespace all plugin routes
+    const pluginRouter = Router();
+    
+    // Create isolated context for plugin
+    const context = createPluginContext(pluginId);
+    
+    // Load plugin with context injection
+    const plugin = require(`@plugins/${pluginId}/server`);
+    plugin.register(context);
+    
+    // Mount under namespaced route with tenant enablement check
+    app.use(`/api/plugins/${pluginId}`, 
+      requirePluginEnabled(pluginId),
+      pluginRouter
+    );
+  }
+};
+
+const requirePluginEnabled = (pluginId: string): RequestHandler => 
+  async (req, res, next) => {
+    const isEnabled = await checkPluginEnabled(req.tenantId, pluginId);
+    if (!isEnabled) {
+      return res.status(403).json({ 
+        error: 'PLUGIN_DISABLED',
+        pluginId,
+        tenantId: req.tenantId 
+      });
+    }
+    next();
+  };
+```
+
+### 6. Frontend Integration with Manifest System
+
+Plugins use a manifest-based approach for frontend integration with conditional rendering based on tenant enablement:
+
+#### Plugin Frontend Manifest
+
+```typescript
+// plugins/inventory/client/manifest.ts
+export default {
+  id: 'inventory',
+  routes: [
+    { 
+      path: '/inventory/items', 
+      component: () => import('./pages/InventoryItemsPage'),
+      permission: 'inventory.view'
+    },
+    { 
+      path: '/inventory/categories', 
+      component: () => import('./pages/CategoriesPage'),
+      permission: 'inventory.view'
+    }
+  ],
+  menu: [
+    { 
+      section: 'Operations', 
+      label: 'Inventory', 
+      icon: 'Package',
+      children: [
+        { 
+          label: 'Items', 
+          to: '/inventory/items', 
+          permission: 'inventory.view' 
+        },
+        { 
+          label: 'Categories', 
+          to: '/inventory/categories', 
+          permission: 'inventory.view' 
+        }
+      ]
+    }
+  ],
+  widgets: [
+    {
+      id: 'low-stock-alert',
+      component: () => import('./widgets/LowStockWidget'),
+      permissions: ['inventory.view'],
+      defaultPosition: { dashboard: 'sidebar' }
+    }
+  ]
+} as const;
+```
+
+#### Dynamic Plugin Pages
+
+```typescript
+// plugins/inventory/client/pages/InventoryItemsPage.tsx
 import { PageLayout } from '@foundation/client/components/layout/PageLayout';
 import { DataTable } from '@foundation/client/components/data/DataTable';
 import { useAuth } from '@foundation/client/provider/AuthProvider';
 import { Authorized } from '@foundation/client/components/auth/Authorized';
+import { usePluginApi } from '@foundation/client/hooks/usePluginApi';
 
 export const InventoryItemsPage = () => {
   const { user } = useAuth();
+  const { apiBase } = usePluginApi('inventory'); // Returns /api/plugins/inventory
   
   return (
     <Authorized permissions={["inventory.view"]}>
@@ -318,7 +510,7 @@ export const InventoryItemsPage = () => {
         }
       >
         <DataTable
-          endpoint="/api/inventory/items"
+          endpoint={`${apiBase}/items`}  // Computed plugin API path
           columns={inventoryItemColumns}
           searchable={true}
           filterable={true}
@@ -329,112 +521,488 @@ export const InventoryItemsPage = () => {
 };
 ```
 
-## Module Development Templates
+#### Host Shell Integration
 
-### 1. CRUD Module Template
-For basic data management modules (customers, products, etc.)
+```typescript
+// foundation/client/shell/PluginMenuRenderer.tsx
+import { usePluginManifests } from '@foundation/client/hooks/usePluginManifests';
+import { useUserPermissions } from '@foundation/client/hooks/useUserPermissions';
 
-### 2. Workflow Module Template  
-For process-driven modules (order processing, approval workflows, etc.)
+export const PluginMenuRenderer = () => {
+  const manifests = usePluginManifests(); // Only enabled plugins for current tenant
+  const permissions = useUserPermissions();
 
-### 3. Reporting Module Template
-For analytics and reporting modules
+  return (
+    <>
+      {manifests.map(manifest => 
+        manifest.menu.map(menuItem => {
+          // Hide if plugin disabled or user lacks permission
+          if (!hasPermission(permissions, menuItem.permission)) return null;
+          
+          return (
+            <MenuSection key={menuItem.section} title={menuItem.section}>
+              {menuItem.children.map(child => (
+                <MenuItem key={child.to} {...child} />
+              ))}
+            </MenuSection>
+          );
+        })
+      )}
+    </>
+  );
+};
+```
 
-### 4. Integration Module Template
-For modules that connect to external systems
+## Plugin Migration Strategy
 
-## Module Merge Process
+### Migration Runner with Production Safeguards
 
-### 1. Pre-Merge Validation
-- **Schema Compatibility**: Ensure no table/column conflicts
-- **API Conflicts**: Check for overlapping endpoints
-- **Permission Conflicts**: Verify unique permission codes
-- **Dependency Resolution**: Ensure all dependencies are available
+```typescript
+// tools/migration-runner/index.ts
+export class PluginMigrationRunner {
+  async runMigrations(options: {
+    pluginId: string;
+    scope: 'public' | 'tenant';
+    tenantId?: string;
+    fromMigration?: string;
+    dryRun?: boolean;
+    batchSize?: number;
+  }) {
+    // Advisory lock prevents concurrent runs
+    const lockKey = this.getLockKey(options);
+    const acquired = await this.acquireAdvisoryLock(lockKey);
+    
+    if (!acquired) {
+      throw new Error('Migration already running for this plugin/tenant');
+    }
 
-### 2. Automated Integration
-- **Route Registration**: Automatically register module API routes
-- **Navigation Updates**: Add module navigation items to sidebar
-- **Permission Seeding**: Add module permissions to all tenant schemas
-- **Database Migration**: Apply module schema changes to all tenant schemas
-- **Tenant Provisioning**: Automatically create module tables in existing tenant schemas
+    try {
+      if (options.scope === 'tenant' && !options.tenantId) {
+        // Batch process all tenants
+        return await this.runTenantBatch(options);
+      } else {
+        return await this.runSingleMigration(options);
+      }
+    } finally {
+      await this.releaseAdvisoryLock(lockKey);
+    }
+  }
 
-### 3. Post-Merge Testing
-- **Integration Tests**: Verify module works with foundation
-- **Permission Tests**: Ensure security controls work correctly
-- **UI Tests**: Confirm navigation and pages render correctly
+  private async runTenantBatch(options: {
+    pluginId: string;
+    batchSize = 50;
+    dryRun?: boolean;
+  }) {
+    const tenants = await this.getActiveTenants();
+    const results = [];
+
+    for (let i = 0; i < tenants.length; i += options.batchSize) {
+      const batch = tenants.slice(i, i + options.batchSize);
+      
+      for (const tenant of batch) {
+        try {
+          const result = await this.runSingleMigration({
+            ...options,
+            scope: 'tenant',
+            tenantId: tenant.id
+          });
+          results.push({ tenantId: tenant.id, status: 'success', result });
+        } catch (error) {
+          results.push({ 
+            tenantId: tenant.id, 
+            status: 'error', 
+            error: error.message 
+          });
+          // Continue with other tenants
+        }
+      }
+
+      // Brief pause between batches
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    return results;
+  }
+
+  private async validateMigration(migration: Migration): Promise<void> {
+    // Checksum validation for drift detection
+    const currentChecksum = await this.calculateChecksum(migration.content);
+    const recorded = await this.getRecordedMigration(migration.name);
+    
+    if (recorded && recorded.checksum !== currentChecksum) {
+      throw new Error(
+        `Migration drift detected: ${migration.name} checksum mismatch`
+      );
+    }
+  }
+}
+```
+
+### Migration File Structure
+
+```
+plugins/inventory/database/migrations/
+├── public/
+│   ├── 001_plugin_registry.sql
+│   └── 002_role_templates.sql
+└── tenant/
+    ├── 001_inventory_tables.sql
+    ├── 002_add_barcode_column.sql
+    └── 003_add_indexes.sql
+```
+
+## Operational Controls & Observability
+
+### Plugin Health & Kill Switches
+
+```typescript
+// foundation/server/middleware/plugin-health.ts
+export const createKillSwitch = () => {
+  let globalKillSwitch = false;
+  const tenantKillSwitches = new Map<string, Set<string>>();
+
+  return {
+    // Global kill switch (environment variable or database)
+    setGlobalKillSwitch: (enabled: boolean) => {
+      globalKillSwitch = enabled;
+    },
+
+    // Per-tenant plugin kill switch
+    disablePluginForTenant: (tenantId: string, pluginId: string) => {
+      if (!tenantKillSwitches.has(tenantId)) {
+        tenantKillSwitches.set(tenantId, new Set());
+      }
+      tenantKillSwitches.get(tenantId)!.add(pluginId);
+    },
+
+    // Health check endpoint
+    healthCheck: (pluginId: string) => async (req: Request, res: Response) => {
+      const health = {
+        pluginId,
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        checks: {
+          database: await checkDatabaseHealth(pluginId),
+          permissions: await checkPermissionHealth(pluginId),
+          dependencies: await checkDependencyHealth(pluginId)
+        }
+      };
+
+      const isHealthy = Object.values(health.checks).every(check => check === 'ok');
+      res.status(isHealthy ? 200 : 503).json(health);
+    }
+  };
+};
+```
+
+### Structured Logging & Metrics
+
+```typescript
+// foundation/server/observability/plugin-logger.ts
+export const createPluginLogger = (pluginId: string) => ({
+  log: (message: string, meta: object = {}) => {
+    logger.info(message, {
+      pluginId,
+      ...meta,
+      timestamp: new Date().toISOString()
+    });
+  },
+
+  error: (message: string, error: Error, meta: object = {}) => {
+    logger.error(message, {
+      pluginId,
+      error: {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      },
+      ...meta
+    });
+  },
+
+  // Metrics tracking
+  incrementCounter: (metric: string, labels: object = {}) => {
+    metrics.increment(`plugin.${pluginId}.${metric}`, {
+      pluginId,
+      ...labels
+    });
+  },
+
+  recordLatency: (metric: string, duration: number, labels: object = {}) => {
+    metrics.histogram(`plugin.${pluginId}.${metric}.duration`, duration, {
+      pluginId,
+      ...labels
+    });
+  }
+});
+```
 
 ## Development Tools
 
-### 1. Module Generator
-Tool to scaffold new modules with all required files and patterns:
+### 1. Plugin Generator
+Tool to scaffold new plugins with all required files and patterns:
 ```bash
-npm run create-module <module-name> <template-type>
+npm run create-plugin <plugin-name> <template-type>
+# Options: crud, workflow, reporting, integration
 ```
 
-### 2. Merge Validator
-Tool to validate modules before merging:
+### 2. Migration Runner
+Production-ready migration management:
 ```bash
-npm run validate-module <module-path>
+# Run all pending migrations for a plugin
+npm run migrate:plugin inventory
+
+# Dry run to see what would be applied
+npm run migrate:plugin inventory --dry-run
+
+# Run migrations for specific tenant
+npm run migrate:plugin inventory --tenant acme-corp
+
+# Batch migration with progress tracking
+npm run migrate:plugin inventory --batch-size 20 --from 002_add_indexes
 ```
 
-### 3. Conflict Detector
-Tool to identify potential conflicts between modules:
+### 3. Plugin Validator
+Tool to validate plugins before deployment:
 ```bash
-npm run check-conflicts <module1> <module2>
+npm run validate-plugin <plugin-path>
+# Checks: schema conflicts, permission namespacing, API compatibility
 ```
 
-## Security Considerations
+### 4. Plugin Admin CLI
+Operational management commands:
+```bash
+# Enable/disable plugin for tenant
+npm run plugin:enable inventory --tenant acme-corp
+npm run plugin:disable inventory --tenant acme-corp
 
-1. **Tenant Isolation**: Physical schema separation provides complete data isolation
-2. **Permission Integration**: Modules define their own permissions following foundation patterns
-3. **API Security**: All module endpoints inherit foundation authentication/authorization
-4. **Input Validation**: All modules use foundation validation patterns
-5. **Schema-Level Security**: PostgreSQL schema permissions prevent cross-tenant access
-6. **Connection Security**: Tenant database connections are automatically scoped to correct schema
+# Check plugin status across tenants
+npm run plugin:status inventory
 
-## Benefits of This Design
+# Export plugin data for tenant
+npm run plugin:export inventory --tenant acme-corp --output ./backup.json
+```
 
-1. **Consistent Development Experience**: All modules follow identical patterns
-2. **Reduced Complexity**: Business analysts work with familiar, standardized templates
-3. **Automatic Integration**: No manual wiring required when merging modules
-4. **Conflict Prevention**: Built-in validation prevents most merge conflicts
-5. **Scalable Architecture**: Can support unlimited business modules
-6. **Maintainable Codebase**: Clear separation between foundation and business logic
+## Security & Governance
 
-## Next Steps
+### Security Boundaries
 
-1. Implement the module registration system
-2. Create module templates for common patterns
-3. Build development tools (generator, validator, conflict detector)
-4. Create comprehensive documentation for business analysts
-5. Set up automated testing for module integration
+1. **Plugin Isolation**: Plugins cannot access foundation internals directly
+2. **API Boundaries**: All capabilities provided through controlled PluginContext
+3. **Tenant Data Isolation**: `withTenantTx` ensures proper schema scoping
+4. **Permission Namespacing**: All plugin permissions prefixed (e.g., `inventory.view`)
+5. **Route Namespacing**: All plugin routes under `/api/plugins/:id/*`
+6. **Schema Safety**: No dynamic SQL; sanitized identifiers only
 
-## Implementation Timeline
+### Role Template Governance
 
-### Phase 1: Foundation Enhancements (Week 1-2)
-- Refactor current code into foundation structure with schema-per-tenant architecture
-- Implement tenant schema management system
-- Create tenant provisioning and database abstraction layer
-- Implement module registry system
-- Create module configuration interfaces
-- Set up automatic module discovery and deployment to tenant schemas
+```typescript
+// Plugin suggests role templates, tenant admins control adoption
+export const handleRoleTemplateUpgrade = async (
+  tenantId: string, 
+  pluginId: string, 
+  newVersion: string
+) => {
+  const templates = await getPluginRoleTemplates(pluginId, newVersion);
+  const existingRoles = await getTenantRoles(tenantId);
+  
+  const roleDiff = calculateRoleDiff(existingRoles, templates);
+  
+  // Present diff to tenant admin for approval
+  return {
+    pluginId,
+    version: newVersion,
+    changes: roleDiff,
+    requiresApproval: roleDiff.length > 0,
+    applyUrl: `/admin/plugins/${pluginId}/roles/apply`
+  };
+};
+```
 
-### Phase 2: Module Templates (Week 3-4)
-- Create CRUD module template
-- Create workflow module template
-- Create reporting module template
-- Build module generator tool
+### Data Retention & Uninstall Policies
 
-### Phase 3: Integration Tools (Week 5-6)
-- Build merge validator
-- Create conflict detector
-- Implement automated integration system
-- Set up testing framework
+```typescript
+export const createUninstallPolicy = () => ({
+  // Plugin disable: keep data, hide UI
+  disable: async (tenantId: string, pluginId: string) => {
+    await setPluginEnabled(tenantId, pluginId, false);
+    // Data remains accessible via direct DB queries
+  },
 
-### Phase 4: Documentation & Training (Week 7-8)
-- Create comprehensive developer handbook
-- Build tutorial modules
-- Create video training materials
-- Set up support documentation
+  // Plugin uninstall: archive data, remove tables
+  uninstall: async (tenantId: string, pluginId: string, options: {
+    exportData?: boolean;
+    keepArchive?: boolean;
+  }) => {
+    if (options.exportData) {
+      await exportPluginData(tenantId, pluginId);
+    }
+    
+    if (options.keepArchive) {
+      await archivePluginTables(tenantId, pluginId);
+    } else {
+      await dropPluginTables(tenantId, pluginId);
+    }
+    
+    await removePluginFromRegistry(tenantId, pluginId);
+  }
+});
+```
 
-This design provides a robust foundation for your plugin-based development approach, enabling business analysts to create functional modules with AI assistance while maintaining code quality and system integrity.
+## Benefits of This Architecture
+
+### For Business Analysts
+- **Familiar Patterns**: Standardized templates and development patterns
+- **Simplified Development**: No tenant complexity, clean database access
+- **AI-Assisted Development**: Templates optimized for AI code generation
+- **Rapid Iteration**: Hot-reload development with immediate feedback
+
+### For Operations Teams  
+- **Runtime Control**: Enable/disable plugins without code deployment
+- **Safe Migrations**: Idempotent, resumable, batchable migrations
+- **Observability**: Per-plugin metrics, structured logs, health endpoints
+- **Kill Switches**: Emergency controls at global and tenant levels
+- **Data Governance**: Clear export/archive/delete policies
+
+### For Platform Architecture
+- **True Isolation**: API boundaries prevent plugin-foundation coupling
+- **Scalable Tenancy**: Schema-per-tenant with migration batching
+- **Version Management**: Plugin API compatibility and migration history
+- **Conflict Prevention**: Namespaced routes, permissions, and database objects
+
+## Implementation Roadmap
+
+### Phase 1: Core Infrastructure (High Impact, Low Risk)
+**Timeline: 2-3 weeks**
+
+**Deliverables:**
+- ✅ Route namespacing: `/api/plugins/:pluginId/*` 
+- ✅ Plugin registry tables (`sys_plugins`, `sys_tenant_plugins`, `sys_plugin_migrations`)
+- ✅ PluginContext injection system
+- ✅ Basic plugin enable/disable per tenant
+- ✅ Plugin health endpoints
+
+**Done When:**
+- Enable/disable works per tenant via admin UI
+- All plugin routes properly namespaced and guarded
+- Logs include `{pluginId, tenantId}` context
+- One existing module converted to plugin pattern
+
+### Phase 2: Operational Readiness (Migration & Ops)
+**Timeline: 3-4 weeks**
+
+**Deliverables:**
+- ✅ Migration runner with idempotency and checksums
+- ✅ Advisory locking and tenant batching
+- ✅ Kill switches (global and per-tenant)
+- ✅ Structured logging and baseline metrics
+- ✅ Frontend manifest system
+- ✅ Role template UI with diff & apply
+
+**Done When:**
+- Can upgrade plugins across N tenants safely
+- Observe migration progress and recover mid-flight
+- Plugin admin UI shows status, versions, configuration
+- Frontend menus conditionally render based on enablement + permissions
+
+### Phase 3: Scale & Governance (Enterprise Ready)
+**Timeline: 4-5 weeks**
+
+**Deliverables:**
+- ✅ Advanced tenant batching with backoff strategies
+- ✅ Plugin data export/cleanup policies on uninstall
+- ✅ Comprehensive observability (metrics, traces, alerts)
+- ✅ Multi-database sharding preparation
+- ✅ Plugin marketplace foundations (if needed)
+- ✅ Advanced admin controls and audit logging
+
+**Done When:**
+- Can safely run upgrades for hundreds+ tenants with predictable SLOs
+- Complete plugin lifecycle management (install → enable → configure → upgrade → disable → uninstall)
+- Production monitoring and alerting for plugin health
+- Ready for third-party plugin development (if required)
+
+### Success Metrics
+
+**Phase 1 Success:**
+- Zero plugin route collisions
+- Sub-second plugin enable/disable operations
+- 100% plugin isolation (no direct foundation imports)
+
+**Phase 2 Success:**
+- Zero migration failures in tenant batches
+- <30 second plugin upgrades for 50+ tenants
+- <1% false positive health check failures
+
+**Phase 3 Success:**
+- <5 minute plugin upgrades for 500+ tenants
+- 99.9% plugin availability during normal operations
+- Zero data loss during plugin lifecycle operations
+
+---
+
+## Testing Strategy
+
+### Plugin Integration Tests
+
+```typescript
+// tests/plugins/inventory.integration.test.ts
+describe('Inventory Plugin Integration', () => {
+  beforeEach(async () => {
+    await setupTestTenant('test-tenant');
+    await enablePlugin('test-tenant', 'inventory');
+  });
+
+  test('plugin lifecycle: enable → migrate → CRUD → disable → 403', async () => {
+    // 1. Enable plugin
+    const enableResult = await enablePlugin('test-tenant', 'inventory');
+    expect(enableResult.success).toBe(true);
+
+    // 2. Run migrations
+    await runPluginMigrations('inventory', { tenantId: 'test-tenant' });
+    
+    // 3. Test CRUD operations
+    const response = await request(app)
+      .get('/api/plugins/inventory/items')
+      .set('Authorization', `Bearer ${testToken}`)
+      .expect(200);
+    
+    // 4. Disable plugin
+    await disablePlugin('test-tenant', 'inventory');
+    
+    // 5. Verify 403 response
+    await request(app)
+      .get('/api/plugins/inventory/items')
+      .set('Authorization', `Bearer ${testToken}`)
+      .expect(403)
+      .expect(res => {
+        expect(res.body.error).toBe('PLUGIN_DISABLED');
+        expect(res.body.pluginId).toBe('inventory');
+      });
+  });
+
+  test('migration idempotency across multiple runs', async () => {
+    // Run migrations multiple times
+    const result1 = await runPluginMigrations('inventory', { tenantId: 'test-tenant' });
+    const result2 = await runPluginMigrations('inventory', { tenantId: 'test-tenant' });
+    
+    expect(result1.migrationsApplied).toBeGreaterThan(0);
+    expect(result2.migrationsApplied).toBe(0); // No new migrations
+  });
+
+  test('plugin context isolation', async () => {
+    // Ensure plugin cannot access foundation internals
+    const pluginContext = createPluginContext('inventory');
+    
+    // Should have controlled access
+    expect(pluginContext.router).toBeDefined();
+    expect(pluginContext.withTenantTx).toBeDefined();
+    
+    // Should NOT have direct access
+    expect(pluginContext.foundationDb).toBeUndefined();
+    expect(pluginContext.internalServices).toBeUndefined();
+  });
+});
+```
+
+This architecture transforms the original "merge-based modules" into a production-ready "runtime plugin system" that maintains the developer experience while adding enterprise operational capabilities.
