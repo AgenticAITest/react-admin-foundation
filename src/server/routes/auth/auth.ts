@@ -96,9 +96,11 @@ authRoutes.post('/login', validateData(userLoginSchema), async (req, res) => {
       }
       
       // Get tenant-specific postgres client
+      console.log('🔍 Getting tenant database client for tenant:', tenant.id);
       const { TenantDatabaseManager } = await import('src/server/lib/db/tenant-db');
       const manager = TenantDatabaseManager.getInstance();
       const client = await manager.getTenantClient(tenant.id);
+      console.log('🔍 Tenant client obtained, querying for user:', username);
       
       // Query tenant schema for user (search_path is set to tenant schema)
       const results = await client`
@@ -108,8 +110,10 @@ authRoutes.post('/login', validateData(userLoginSchema), async (req, res) => {
         LIMIT 1
       ` as Array<{ id: string; username: string; password_hash: string; fullname: string; email: string; status: 'active'|'inactive' }>;
       
+      console.log('🔍 Tenant user query executed, results count:', results.length);
       if (results.length > 0) {
         const row = results[0];
+        console.log('🔍 Found tenant user:', row.username);
         // Map database fields to expected format
         user = {
           ...row,
@@ -117,6 +121,8 @@ authRoutes.post('/login', validateData(userLoginSchema), async (req, res) => {
           tenant_id: tenant.id,
           tenant_code: tenant.code
         };
+      } else {
+        console.log('❌ No tenant user found with username:', username);
       }
     }
 
