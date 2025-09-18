@@ -480,8 +480,9 @@ export class SafeMigrationRunner {
         
         // Execute CONCURRENTLY operations (autocommit mode)
         for (const op of concurrentOps) {
-          await client.query('SET lock_timeout = $1', ['30s']);
-          await client.query('SET statement_timeout = $1', ['10min']); // Longer for CONCURRENTLY  
+          // Use literals for SET statements (Postgres doesn't support parameterized SET)
+          await client.query('SET lock_timeout = \'30s\'');
+          await client.query('SET statement_timeout = \'10min\''); // Longer for CONCURRENTLY  
           await client.query(`SET search_path = ${format('%I', schemaName)}, public`);
           await client.query(op);
           
@@ -496,8 +497,8 @@ export class SafeMigrationRunner {
           await client.query('BEGIN');
           
           try {
-            await client.query('SET LOCAL lock_timeout = $1', ['30s']);
-            await client.query('SET LOCAL statement_timeout = $1', ['5min']);
+            await client.query('SET LOCAL lock_timeout = \'30s\'');
+            await client.query('SET LOCAL statement_timeout = \'5min\'');
             await client.query(`SET LOCAL search_path = ${format('%I', schemaName)}, public`);
             
             for (const op of transactionalOps) {
@@ -628,12 +629,14 @@ export class SafeMigrationRunner {
       
       // Rest of parsing (dollar quotes, regular quotes, semicolons)
       if (inDollarQuote) {
-        current += char;
         if (char === '$' && sql.substring(i).startsWith(inDollarQuote)) {
-          // Fix: Save tag length before clearing inDollarQuote
-          const tagLength = inDollarQuote.length;
+          // Append full closing delimiter to buffer
+          const closingTag = inDollarQuote;
+          current += closingTag;
+          i += closingTag.length - 1; // Skip rest of closing tag
           inDollarQuote = '';
-          i += tagLength - 1; // Skip rest of closing tag
+        } else {
+          current += char;
         }
       } else if (char === '$' && nextChar) {
         const match = sql.substring(i).match(/^\$(\w*)\$/);
