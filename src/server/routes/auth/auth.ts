@@ -102,13 +102,17 @@ authRoutes.post('/login', validateData(userLoginSchema), async (req, res) => {
       const client = await manager.getTenantClient(tenant.id);
       console.log('🔍 Tenant client obtained, querying for user:', username);
       
-      // Query tenant schema for user (search_path is set to tenant schema)
-      const results = await client`
+      // Query tenant schema for user (explicitly specify schema name)
+      const schemaName = `tenant_${tenant.code.toLowerCase()}`;
+      console.log('🔍 Using schema name:', schemaName);
+      const tableName = `${schemaName}.users`;
+      console.log('🔍 Using table name:', tableName);
+      const results = await client.unsafe(`
         SELECT id, username, password_hash, fullname, email, status 
-        FROM users 
-        WHERE username = ${username} AND status = 'active' 
+        FROM ${tableName} 
+        WHERE username = $1 AND status = 'active' 
         LIMIT 1
-      ` as Array<{ id: string; username: string; password_hash: string; fullname: string; email: string; status: 'active'|'inactive' }>;
+      `, [username]) as Array<{ id: string; username: string; password_hash: string; fullname: string; email: string; status: 'active'|'inactive' }>;
       
       console.log('🔍 Tenant user query executed, results count:', results.length);
       if (results.length > 0) {
