@@ -1,0 +1,93 @@
+Gaps / risks to address
+
+Route collisions & tenancy toggles
+Modules mount under generic paths like /api/inventory/.... That can collide and it’s hard to disable per-tenant cleanly. Use a fixed namespace: /api/plugins/:pluginId/*, and gate requests by tenant enablement.
+
+Plugin lifecycle & versioning (missing registry)
+There’s no durable record of installed versions or applied migrations. Add host registries:
+
+public.sys_plugins(plugin_id, api_version, version_installed, enabled_global)
+
+public.sys_tenant_plugins(tenant_id, plugin_id, version_installed, enabled bool, config jsonb)
+
+public.sys_plugin_migrations(plugin_id, scope enum('public','tenant'), name, applied_at, tenant_id nullable)
+
+Migrations strategy (idempotency/rollback)
+“Deploy to all tenants” is mentioned, but you need ordered, idempotent, per-tenant migrations (with dry-run) and optional down scripts. Avoid locking the world: batch tenants, record progress, resume safely on failure.
+
+Capability-based plugin API
+Modules import foundation pieces directly (middleware, db helpers). That couples plugins to internals. Prefer an injected PluginContext (router, rbac guard, withTenantTx, events, config, logger). It enforces isolation and future API stability.
+
+RBAC: roles vs permissions
+Module config defines both roles and permissions. Roles should be tenant-admin territory; plugins ship permissions only (namespaced like inventory.view). Provide a seed helper that merges permissions without overwriting tenant roles.
+
+Frontend integration
+Add a lightweight manifest per plugin (client/manifest.ts) declaring routes/menu/widgets. The shell renders menus conditionally based on tenant enablement + permissions. Don’t hardwire /api/inventory in pages; compute base path from pluginId.
+
+Search path safety
+Your example does dynamic schema binding. Ensure every plugin DB call runs inside withTenantTx(tenantId) that sets SET LOCAL search_path TO <schema>, public on a fresh pooled connection (or fully-qualified table names). Sanitize schema identifiers—no string interpolation.
+
+Scale limits for “schema per tenant”
+Works great up to hundreds/thousands of tenants; beyond that plan for:
+
+Object count bloat (tables/indexes per tenant)
+
+Long migration windows across all schemas
+Mitigation: shard tenants across databases, or graduate heavy tenants to dedicated DBs; keep your migration runner tenant-batchable.
+
+Observability & kill switch
+Add per-plugin metrics (requests, errors, p95), structured logs with {pluginId, tenantId}, and a global/tenant kill switch that returns 403 PLUGIN_DISABLED (not 404) so you can diagnose.
+
+Uninstall/data policy
+Define behavior on disable/uninstall: keep data? Archive? Soft-delete? Provide an export hook and a guarded “drop tables” path only for explicit ops.
+
+Concrete changes I’d make now
+
+Namespace routes: mount plugin routers at /api/plugins/:id.
+
+Inject context:
+
+export interface PluginContext {
+  router: Router;
+  rbac: { require: (perm: string) => RequestHandler };
+  withTenantTx: <T>(tenantId: string, run: (db: DB) => Promise<T>) => Promise<T>;
+  events: { on(name: string, h: (e:any)=>Promise<void>): void; emit(name:string,p:any): Promise<void> };
+  config: { getGlobal<T>(k:string):Promise<T|undefined>; getTenant<T>(tid:string,k:string):Promise<T|undefined> };
+  log: (msg: string, meta?: object) => void;
+}
+
+
+Plugins implement register(ctx); no direct imports from foundation internals.
+
+Add registries & migration runner (tables above). Plugins ship migrations/public/*.sql and migrations/tenant/*.sql. Runner applies in order, records sys_plugin_migrations, supports --tenant, --from, --dry-run.
+
+RBAC seed policy: plugins declare permissions: ['inventory.view', ...] only; host seeds permissions per tenant if missing. Roles remain tenant-managed.
+
+Frontend manifest:
+
+export default {
+  id: 'inventory',
+  routes: [{ path: '/inventory/items', component: () => import('./pages/Items') }],
+  menu: [{ section: 'Operations', label: 'Inventory', to: '/inventory/items', permission: 'inventory.view' }]
+} as const;
+
+
+Shell reads manifests, hides items if plugin disabled.
+
+Auth→DB glue: middleware derives tenantId from JWT, then exposes req.withTenantTx to handlers; module routes just call await req.withTenantTx(tenantId, db => /* queries */).
+
+Admin UI: a simple page to toggle plugin per tenant, view version, run/pause migrations, edit plugin config (json-schema).
+
+Quick “Definition of Done” to de-risk rollout
+
+Routes namespaced and guarded by tenant enablement.
+
+Plugin registries + migration history in DB.
+
+Context injection replaces direct foundation imports.
+
+Permissions namespaced; roles untouched by plugins.
+
+Per-plugin logs/metrics; kill switch works.
+
+E2E test: enable → migrate → CRUD → disable → 403.
