@@ -131,23 +131,34 @@ authRoutes.post('/login', validateData(userLoginSchema), async (req, res) => {
     }
 
     if (!user) {
+      console.log('❌ No user found, returning 400');
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
+    console.log('🔍 User found, checking password for:', user.username);
+    console.log('🔍 Password hash exists:', !!user.passwordHash);
+    
     // Check the password
     const isMatch = await bcrypt.compare(password, user.passwordHash);
+    console.log('🔍 Password match result:', isMatch);
     if (!isMatch) {
+      console.log('❌ Password mismatch, returning 400');
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
+    console.log('🔍 Password verified, creating JWT tokens');
+    
     // Create a JWT with appropriate user info
     const tokenPayload = domain === null 
       ? { username: user.username } // System user
       : { username: user.username, tenant_id: user.tenant_id, tenant_code: user.tenant_code }; // Tenant user
       
+    console.log('🔍 Token payload:', tokenPayload);
+    
     const accessToken = jwt.sign(tokenPayload, ACCESS_TOKEN_SECRET, { expiresIn: '24h' });
     const refreshToken = jwt.sign(tokenPayload, REFRESH_TOKEN_SECRET, { expiresIn: '48h' });
 
+    console.log('🔍 Tokens created successfully, sending response');
     res.json({ accessToken, refreshToken });
 
   } catch (error) {
