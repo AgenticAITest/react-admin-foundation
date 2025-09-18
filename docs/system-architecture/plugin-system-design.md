@@ -2,7 +2,21 @@
 
 ## Overview
 
-This document outlines the design for a production-ready plugin system that enables business analysts to develop functional modules using AI assistance. The system provides true runtime plugin capabilities with proper isolation, lifecycle management, and operational controls needed for enterprise deployment.
+This document outlines the design for a **hybrid monorepo + runtime plugin system** that enables business analysts to develop functional modules using AI assistance. The system combines the development simplicity of a monorepo with the operational benefits of independent plugin deployment, providing both developer experience and enterprise-grade lifecycle management.
+
+## The Hybrid Architecture: Two-Track Approach
+
+**Track A (Development)**: Monorepo with workspace packages
+- Plugins developed as workspace packages (e.g., `@nimbus-plugin/inventory`)  
+- Instant rebuilds, hot reload, unified development experience
+- Only affected packages rebuild via dependency graph analysis
+
+**Track B (Production)**: Independent versioned artifacts
+- CI publishes changed plugins to private npm registry
+- Runtime loader manages plugin versions per tenant
+- Independent deployment, upgrades, and rollback capabilities
+
+This approach provides monorepo development simplicity with plugin deployment flexibility.
 
 ## Core Design Principles
 
@@ -13,58 +27,98 @@ This document outlines the design for a production-ready plugin system that enab
 5. **Scalability**: Architecture supports hundreds of tenants and dozens of plugins
 6. **Governance**: Clear separation between plugin suggestions and tenant administrative control
 
-## Plugin System Structure
+## Hybrid Monorepo Structure
 
-### 1. Module Directory Structure
+### 1. Workspace Package Architecture
 
 ```
-src/
-├── foundation/           # Core foundation code (unchanged)
-│   ├── server/
-│   ├── client/
-│   └── shared/
-├── plugins/             # All business plugins
-│   ├── plugin-registry.ts    # Auto-generated plugin registry
-│   ├── inventory/            # Example: Inventory Management Plugin
-│   │   ├── plugin.config.ts  # Plugin configuration & metadata
-│   │   ├── server/
-│   │   │   ├── routes/       # API endpoints
-│   │   │   ├── schemas/      # Validation schemas
-│   │   │   ├── services/     # Business logic
-│   │   │   └── types/        # TypeScript interfaces
-│   │   ├── client/
-│   │   │   ├── pages/        # React pages/components
-│   │   │   ├── components/   # Plugin-specific UI components
-│   │   │   ├── hooks/        # Custom React hooks
-│   │   │   ├── manifest.ts   # Frontend integration manifest
-│   │   │   └── types/        # Frontend type definitions
-│   │   ├── database/
-│   │   │   ├── schema.ts     # Database tables & relations
-│   │   │   ├── migrations/   # Public and tenant migrations
-│   │   │   │   ├── public/   # Cross-tenant migrations
-│   │   │   │   └── tenant/   # Per-tenant migrations
-│   │   │   └── seed.ts       # Initial data
+packages/
+├── plugins/                    # All business plugins as packages
+│   ├── inventory/
+│   │   ├── package.json        # @nimbus-plugin/inventory
+│   │   ├── src/
+│   │   │   ├── server/
+│   │   │   │   ├── index.ts    # register(ctx) export
+│   │   │   │   ├── routes/     # API endpoints
+│   │   │   │   ├── schemas/    # Validation schemas
+│   │   │   │   └── services/   # Business logic
+│   │   │   └── frontend/
+│   │   │       ├── pages/      # React components
+│   │   │       ├── manifest.ts # Frontend integration
+│   │   │       └── components/ # Plugin UI components
+│   │   ├── migrations/
+│   │   │   ├── public/         # Cross-tenant migrations
+│   │   │   │   └── 001_init.sql
+│   │   │   └── tenant/         # Per-tenant migrations
+│   │   │       └── 001_tables.sql
 │   │   ├── permissions/
-│   │   │   ├── permissions.ts # Plugin permissions
-│   │   │   └── role-templates.ts # Suggested role templates
-│   │   └── README.md         # Plugin documentation
-│   ├── sales/               # Another business plugin
-│   └── reporting/           # Another business plugin
-└── tools/                   # Development and deployment tools
-    ├── plugin-generator/    # Scaffolding tools
-    ├── migration-runner/    # Plugin migration management
-    ├── plugin-validator/    # Pre-deployment validation
-    └── conflict-detector/   # Detect plugin conflicts
+│   │   │   ├── permissions.ts  # Plugin permissions
+│   │   │   └── roles.ts        # Role templates
+│   │   └── README.md
+│   ├── sales/                  # @nimbus-plugin/sales
+│   └── reporting/              # @nimbus-plugin/reporting
+├── foundation/                 # Core platform
+│   ├── sdk/                    # @foundation/sdk (Plugin API)
+│   │   ├── package.json
+│   │   └── src/
+│   │       ├── plugin-context.ts
+│   │       ├── types.ts
+│   │       └── index.ts
+│   ├── server/                 # @foundation/server
+│   └── client/                 # @foundation/client
+apps/
+├── host-api/                   # Main application backend
+│   ├── package.json            # Depends on workspace plugins
+│   └── src/
+│       ├── plugin-loader.ts    # Runtime plugin loading
+│       └── server.ts
+├── host-web/                   # Main application frontend
+└── admin/                      # Plugin management UI
+tools/
+├── plugin-generator/           # Scaffolding tools
+├── migration-runner/           # Plugin migration CLI
+└── deployment/                 # CI/CD helpers
+pnpm-workspace.yaml             # Workspace configuration
+.changeset/                     # Automated versioning
 ```
 
-### 2. Plugin Configuration System
+### 2. Workspace Dependencies
 
-Each plugin has a `plugin.config.ts` file that defines its metadata and runtime requirements:
+```json
+// apps/host-api/package.json
+{
+  "name": "@nimbus/host-api",
+  "dependencies": {
+    "@foundation/sdk": "workspace:*",
+    "@nimbus-plugin/inventory": "workspace:*",
+    "@nimbus-plugin/sales": "workspace:*"
+  }
+}
+
+// packages/plugins/inventory/package.json  
+{
+  "name": "@nimbus-plugin/inventory",
+  "version": "1.2.0",
+  "main": "./dist/server/index.js",
+  "dependencies": {
+    "@foundation/sdk": "workspace:*"
+  },
+  "peerDependencies": {
+    "express": "^4.18.0",
+    "drizzle-orm": "^0.28.0"
+  }
+}
+```
+
+### 3. Plugin Package Structure
+
+Each plugin is a standalone npm package with its own dependencies and build process:
 
 ```typescript
-// plugins/inventory/plugin.config.ts
-export const inventoryPlugin = {
-  // Plugin identity and versioning
+// packages/plugins/inventory/src/server/index.ts
+import { PluginContext } from '@foundation/sdk';
+
+export const plugin = {
   id: "inventory",
   name: "Inventory Management",
   version: "1.2.0",
@@ -72,52 +126,207 @@ export const inventoryPlugin = {
   description: "Complete inventory tracking and management system",
   author: "Business Analyst Name",
   
-  // System integration
-  dependencies: [], // Other plugins this depends on
   permissions: [
     "inventory.view", 
     "inventory.add", 
     "inventory.edit", 
     "inventory.delete",
     "inventory.reconcile"
-  ],
-  
-  // Role templates (suggestions only - tenant decides)
-  roleTemplates: [
-    {
-      key: "INVENTORY_MANAGER",
-      displayName: "Inventory Manager", 
-      permissions: ["inventory.view", "inventory.add", "inventory.edit", "inventory.delete", "inventory.reconcile"]
-    },
-    {
-      key: "WAREHOUSE_STAFF",
-      displayName: "Warehouse Staff",
-      permissions: ["inventory.view", "inventory.add"]
-    }
-  ],
-  
-  // Database requirements
-  database: {
-    tables: ["inventory_items", "inventory_categories", "stock_movements"],
-    requiresSeeding: true,
-    migrationPath: "./database/migrations"
-  },
-  
-  // Feature configuration
-  features: {
-    barcodeScanning: true,
-    lowStockAlerts: true,
-    exportReports: true
-  },
-  
-  // Runtime capabilities needed
-  capabilities: [
-    "database", "cron", "events", "config"
   ]
+};
+
+// Plugin registration function
+export const register = (ctx: PluginContext) => {
+  const { router, rbac, withTenantTx, log } = ctx;
+
+  router.get("/items", 
+    rbac.require('inventory.view'),
+    async (req, res) => {
+      try {
+        const result = await withTenantTx(req.tenantId, async (db) => {
+          return await db.select().from(inventoryItems);
+        });
+        res.json(result);
+      } catch (error) {
+        log('Error fetching inventory items', { 
+          error: error.message, 
+          tenantId: req.tenantId 
+        });
+        res.status(500).json({ error: 'INVENTORY_FETCH_FAILED' });
+      }
+    }
+  );
+
+  // Additional routes...
+};
+
+// Role templates (suggestions only)
+export const roleTemplates = [
+  {
+    key: "INVENTORY_MANAGER",
+    displayName: "Inventory Manager", 
+    permissions: ["inventory.view", "inventory.add", "inventory.edit", "inventory.delete", "inventory.reconcile"]
+  },
+  {
+    key: "WAREHOUSE_STAFF",
+    displayName: "Warehouse Staff",
+    permissions: ["inventory.view", "inventory.add"]
+  }
+];
+```
+
+## Development Workflow: Two-Track System
+
+### Track A: Development (Monorepo Experience)
+
+#### Local Development Commands
+
+```bash
+# Initial setup
+pnpm install
+
+# Plugin development (watch mode)
+pnpm -F @nimbus-plugin/inventory dev      # Plugin builds in watch mode
+pnpm -F @nimbus/host-api dev              # Host API with hot reload
+pnpm -F @nimbus/host-web dev              # Host web with plugin UI
+
+# Testing
+pnpm -F @nimbus-plugin/inventory test    # Unit tests for plugin
+pnpm -F @nimbus/host-api test             # Integration tests
+
+# Build affected packages only
+pnpm -r build --filter ...affected       # Turborepo/Nx affected graph
+```
+
+#### Development Benefits
+- **Hot Module Replacement**: Edit plugin → only plugin rebuilds → host reloads
+- **Unified Tooling**: Single TypeScript config, shared linting, unified testing
+- **Cross-Plugin Refactoring**: Easy to update shared types or foundation APIs
+- **Fast Feedback**: Instant rebuilds with workspace symlinks
+
+### Track B: Production (Independent Artifacts)
+
+#### Release Process with Changesets
+
+```bash
+# 1. Make changes to inventory plugin
+# 2. Add changeset
+pnpm changeset
+# Pick: @nimbus-plugin/inventory, choose: minor
+# Write: "feat(inventory): add cycle count functionality"
+
+# 3. Commit and push
+git commit -m "feat(inventory): add cycle count page"
+git push origin feature/inventory-cycle-count
+
+# 4. CI automatically:
+# - Builds only affected packages
+# - Runs tests for changed plugins
+# - Versions and publishes to private registry
+```
+
+#### CI/CD Pipeline
+
+```yaml
+# .github/workflows/release.yml
+name: Release
+on:
+  push:
+    branches: [main]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: pnpm/action-setup@v2
+      
+      # Only build/test affected packages
+      - run: pnpm -r build --filter ...affected
+      - run: pnpm -r test --filter ...affected
+      
+      # Version and publish changed packages
+      - run: pnpm changeset version
+      - run: pnpm -r publish --access restricted
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+```
+
+#### Plugin Deployment & Tenant Upgrades
+
+```bash
+# Option A: Host locks plugin versions (safer for production)
+# 1. Update host dependency
+# apps/host-api/package.json: "@nimbus-plugin/inventory": "^1.6.0"
+
+# 2. Deploy host application
+npm run deploy:production
+
+# 3. Runtime loader detects version change and:
+# - Runs public migrations
+# - Runs tenant migrations in batches (idempotent, checksummed)
+# - Updates sys_plugins.version_installed
+# - Host serves /api/plugins/inventory/* at new version
+
+# Option B: Admin-controlled upgrades (more flexible)
+hostctl plugins upgrade inventory --to 1.6.0 --batch 50 --dry-run
+hostctl plugins upgrade inventory --to 1.6.0 --batch 50
+
+# Rollback if needed
+hostctl plugins rollback inventory --to 1.5.3 --tenant acme-corp
+```
+
+#### Runtime Plugin Loading
+
+```typescript
+// apps/host-api/src/plugin-loader.ts
+import { readdir } from 'fs/promises';
+import { resolve } from 'path';
+
+export class RuntimePluginLoader {
+  async loadPlugins() {
+    const enabledPlugins = await this.getEnabledPlugins();
+    
+    for (const plugin of enabledPlugins) {
+      try {
+        // Dynamic import from node_modules
+        const pluginModule = await import(`@nimbus-plugin/${plugin.id}`);
+        
+        // Verify API compatibility
+        if (!this.isCompatible(pluginModule.plugin.apiVersion)) {
+          throw new Error(`Plugin ${plugin.id} API version ${pluginModule.plugin.apiVersion} not compatible with host`);
+        }
+        
+        // Create plugin context
+        const context = this.createPluginContext(plugin.id);
+        
+        // Register plugin routes
+        pluginModule.register(context);
+        
+        // Mount under namespaced route
+        this.app.use(`/api/plugins/${plugin.id}`, 
+          this.requirePluginEnabled(plugin.id),
+          context.router
+        );
+        
+        console.log(`Loaded plugin: ${plugin.id}@${plugin.version}`);
+      } catch (error) {
+        console.error(`Failed to load plugin ${plugin.id}:`, error);
+      }
+    }
+  }
+  
+  private async getEnabledPlugins() {
+    // Query sys_plugins for globally enabled plugins
+    // Query sys_tenant_plugins for tenant-specific enablement
+    return await this.db.select()
+      .from(sysPlugins)
+      .where(eq(sysPlugins.enabledGlobal, true));
+  }
 }
 ```
 
-### 3. Plugin Registry System
+### 4. Plugin Registry System
 
 The system maintains a persistent registry of plugins with full lifecycle tracking:
 
@@ -737,50 +946,109 @@ export const createPluginLogger = (pluginId: string) => ({
 });
 ```
 
-## Development Tools
+## Development Tools & Commands
 
-### 1. Plugin Generator
-Tool to scaffold new plugins with all required files and patterns:
+### 1. Daily Development Workflow
+
 ```bash
-npm run create-plugin <plugin-name> <template-type>
-# Options: crud, workflow, reporting, integration
+# Initial setup
+pnpm install
+
+# Plugin development (only rebuilds affected packages)
+pnpm -F @nimbus-plugin/inventory dev     # Plugin watch build
+pnpm -F @nimbus/host-api dev             # Host API with plugin hot reload
+pnpm -F @nimbus/host-web dev             # Host web frontend
+
+# Testing (targeted to changed code)
+pnpm -F @nimbus-plugin/inventory test    # Plugin unit tests
+pnpm -F @nimbus/host-api test            # Integration tests
+pnpm -r test --filter ...affected       # Test only affected packages
+
+# Adding migrations
+# Create: packages/plugins/inventory/migrations/tenant/20250918_001_add_column.sql
+pnpm -F @nimbus-plugin/inventory test    # Verify migration syntax
 ```
 
-### 2. Migration Runner
-Production-ready migration management:
+### 2. Release Management
+
 ```bash
-# Run all pending migrations for a plugin
-npm run migrate:plugin inventory
+# Propose plugin release
+pnpm changeset                           # Interactive - pick packages and bump type
+# Example: Select @nimbus-plugin/inventory, choose "minor"
 
-# Dry run to see what would be applied
-npm run migrate:plugin inventory --dry-run
+# Check what will be released
+pnpm changeset status
 
-# Run migrations for specific tenant
-npm run migrate:plugin inventory --tenant acme-corp
+# Manual version bump (if needed)
+pnpm changeset version
 
-# Batch migration with progress tracking
-npm run migrate:plugin inventory --batch-size 20 --from 002_add_indexes
+# Publish (usually done by CI)
+pnpm -r publish --access restricted
 ```
 
-### 3. Plugin Validator
-Tool to validate plugins before deployment:
+### 3. Plugin Operations CLI (hostctl)
+
 ```bash
-npm run validate-plugin <plugin-path>
-# Checks: schema conflicts, permission namespacing, API compatibility
+# Plugin status management
+hostctl plugins list                     # Show all plugins and versions
+hostctl plugins status inventory         # Status across all tenants
+
+# Plugin upgrades
+hostctl plugins upgrade inventory --to 1.6.0 --dry-run
+hostctl plugins upgrade inventory --to 1.6.0 --batch 50
+hostctl plugins upgrade inventory --tenant acme-corp --to 1.6.0
+
+# Plugin rollback
+hostctl plugins rollback inventory --to 1.5.3 --tenant acme-corp
+hostctl plugins rollback inventory --to 1.5.3 --all-tenants --batch 25
+
+# Migration management
+hostctl migrations run inventory --scope tenant --dry-run
+hostctl migrations run inventory --tenant acme-corp --from 003_add_indexes
+hostctl migrations status inventory     # Show migration progress
+
+# Plugin data management
+hostctl plugins export inventory --tenant acme-corp --output ./backup.json
+hostctl plugins cleanup inventory --version 1.4.0  # Remove old versions
 ```
 
-### 4. Plugin Admin CLI
-Operational management commands:
+### 4. Workspace Management
+
 ```bash
-# Enable/disable plugin for tenant
-npm run plugin:enable inventory --tenant acme-corp
-npm run plugin:disable inventory --tenant acme-corp
+# Create new plugin
+pnpm create-plugin inventory-plus --template crud
 
-# Check plugin status across tenants
-npm run plugin:status inventory
+# Validate plugin structure
+pnpm validate-plugin packages/plugins/inventory-plus
 
-# Export plugin data for tenant
-npm run plugin:export inventory --tenant acme-corp --output ./backup.json
+# Check dependencies and conflicts
+pnpm dep-check @nimbus-plugin/inventory  # Show all dependents
+pnpm conflict-check                      # Check for route/permission conflicts
+
+# Build affected packages only
+pnpm -r build --filter ...affected      # Turborepo affected graph
+```
+
+### 5. Configuration Files
+
+#### pnpm-workspace.yaml
+```yaml
+packages:
+  - "packages/**"
+  - "apps/**"
+  - "tools/**"
+```
+
+#### .changeset/config.json
+```json
+{
+  "changelog": "@changesets/changelog-github",
+  "commit": false,
+  "access": "restricted",
+  "baseBranch": "main",
+  "updateInternalDependencies": "patch",
+  "ignore": ["@nimbus/docs", "@nimbus/tooling"]
+}
 ```
 
 ## Security & Governance
@@ -849,26 +1117,48 @@ export const createUninstallPolicy = () => ({
 });
 ```
 
-## Benefits of This Architecture
+## Benefits of This Hybrid Architecture
 
-### For Business Analysts
-- **Familiar Patterns**: Standardized templates and development patterns
-- **Simplified Development**: No tenant complexity, clean database access
-- **AI-Assisted Development**: Templates optimized for AI code generation
-- **Rapid Iteration**: Hot-reload development with immediate feedback
+### For Business Analysts (Development Experience)
+- **Monorepo Simplicity**: Single repo, unified tooling, familiar development patterns
+- **Instant Feedback**: Hot module replacement - edit plugin → only plugin rebuilds → host reloads
+- **AI-Assisted Development**: Workspace structure optimized for AI code generation
+- **No Deployment Complexity**: Focus on business logic, not packaging or versioning
+- **Easy Debugging**: Cross-plugin visibility during development
 
-### For Operations Teams  
-- **Runtime Control**: Enable/disable plugins without code deployment
-- **Safe Migrations**: Idempotent, resumable, batchable migrations
-- **Observability**: Per-plugin metrics, structured logs, health endpoints
-- **Kill Switches**: Emergency controls at global and tenant levels
-- **Data Governance**: Clear export/archive/delete policies
+### For Operations Teams (Production Control)  
+- **Independent Plugin Lifecycles**: Upgrade inventory 1.5.3 → 1.6.0 without touching other plugins
+- **Safe Tenant Rollouts**: Batch upgrades across hundreds of tenants with rollback capability
+- **Granular Control**: Enable/disable plugins per tenant without code deployment
+- **Operational Safety**: Advisory-locked migrations, checksum validation, resumable upgrades
+- **Observability**: Per-plugin metrics, structured logs, health endpoints per version
 
-### For Platform Architecture
-- **True Isolation**: API boundaries prevent plugin-foundation coupling
-- **Scalable Tenancy**: Schema-per-tenant with migration batching
-- **Version Management**: Plugin API compatibility and migration history
-- **Conflict Prevention**: Namespaced routes, permissions, and database objects
+### For Platform Architecture (Best of Both Worlds)
+- **Development Velocity**: Monorepo benefits - unified CI, easy refactoring, shared tooling
+- **Production Flexibility**: Plugin benefits - independent deployment, isolated failures
+- **Selective Builds**: Only affected packages rebuild (via Turborepo/Nx affected graph)
+- **Version Management**: Changesets automatically version only changed plugins
+- **API Boundaries**: Foundation SDK prevents plugin-host coupling while maintaining workspace benefits
+
+### Key Advantages vs. Pure Approaches
+
+**vs. Traditional Monorepo:**
+- ✅ No full repo rebuilds on plugin changes
+- ✅ Independent plugin release cycles
+- ✅ Tenant-by-tenant plugin upgrades
+- ✅ Plugin-specific rollback capability
+
+**vs. Pure Plugin Architecture:**
+- ✅ Simple development workflow for business analysts  
+- ✅ Unified tooling and dependency management
+- ✅ Easy cross-plugin refactoring when needed
+- ✅ No complex packaging or distribution setup
+
+**vs. Microservices:**
+- ✅ Shared database transactions across plugins
+- ✅ No network latency between plugins
+- ✅ Simpler debugging and tracing
+- ✅ Lower operational overhead
 
 ## Implementation Roadmap
 
