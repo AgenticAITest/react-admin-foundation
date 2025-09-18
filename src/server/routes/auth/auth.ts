@@ -64,8 +64,10 @@ authRoutes.post('/login', validateData(userLoginSchema), async (req, res) => {
   const { username: loginInput, password } = req.body;
   
   try {
+    console.log('🔍 Parsing login input:', loginInput);
     // Parse login input - handles both sysadmin and username@domain.com formats
     const { username, domain } = parseLoginInput(loginInput);
+    console.log('🔍 Parsed result:', { username, domain });
     
     let user: any = null;
     let lookupUsername: string;
