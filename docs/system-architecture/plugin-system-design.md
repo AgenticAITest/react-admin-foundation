@@ -435,7 +435,8 @@ export class SafeMigrationRunner {
   }
   
   private validateTenantId(tenantId: string): void {
-    if (!/^[a-z0-9_-]+$/.test(tenantId)) {
+    // Standardized validation - only alphanumeric and underscores (no hyphens)
+    if (!/^[a-z0-9_]+$/.test(tenantId)) {
       throw new Error(`Invalid tenant ID: ${tenantId}`);
     }
   }
@@ -453,77 +454,174 @@ export class SafeMigrationRunner {
     this.validatePluginId(pluginId);
     this.validateTenantId(tenantId);
     
-    const lockKey = `plugin_migration_${pluginId}_${tenantId}`;
     const schemaName = this.getSchemaName(tenantId);
     
-    // Acquire session-level advisory lock (survives transaction boundaries)
-    const lockResult = await this.db.query(`
-      SELECT pg_try_advisory_lock(hashtext($1)) as acquired
-    `, [lockKey]);
-    
-    if (!lockResult.rows[0].acquired) {
-      throw new Error(`Migration already running for ${pluginId}/${tenantId}`);
-    }
+    // Acquire single dedicated client for entire migration scope
+    const client = await this.dbPool.connect();
     
     try {
-      const startTime = Date.now();
+      // Use two-key advisory lock to reduce collision risk
+      const pluginHash = this.hashString(pluginId);
+      const tenantHash = this.hashString(tenantId);
       
-      // Split CONCURRENTLY operations from transactional operations
-      const { concurrentOps, transactionalOps } = this.splitMigrationOps(migration.sql);
+      const lockResult = await client.query(`
+        SELECT pg_try_advisory_lock($1, $2) as acquired
+      `, [pluginHash, tenantHash]);
       
-      // Execute CONCURRENTLY operations outside transaction (autocommit)
-      for (const op of concurrentOps) {
-        await this.db.query('SET lock_timeout = $1', ['30s']);
-        await this.db.query('SET statement_timeout = $1', ['10min']); // Longer for CONCURRENTLY
-        await this.db.query(`SET search_path = ${format('%I', schemaName)}, public`);
-        await this.db.query(op);
+      if (!lockResult.rows[0].acquired) {
+        throw new Error(`Migration already running for ${pluginId}/${tenantId}`);
       }
       
-      // Execute remaining operations in transaction
-      if (transactionalOps.length > 0) {
-        await this.db.transaction(async (tx) => {
-          await tx.query('SET LOCAL lock_timeout = $1', ['30s']);
-          await tx.query('SET LOCAL statement_timeout = $1', ['5min']);
-          await tx.query(`SET LOCAL search_path = ${format('%I', schemaName)}, public`);
+      try {
+        const startTime = Date.now();
+        
+        // Parse migration statements with metadata markers
+        const { concurrentOps, transactionalOps } = this.parseMigrationStatements(migration.sql);
+        
+        // Execute CONCURRENTLY operations (autocommit mode)
+        for (const op of concurrentOps) {
+          await client.query('SET lock_timeout = $1', ['30s']);
+          await client.query('SET statement_timeout = $1', ['10min']); // Longer for CONCURRENTLY
+          await client.query(`SET search_path = ${format('%I', schemaName)}, public`);
+          await client.query(op);
+        }
+        
+        // Execute remaining operations in transaction
+        if (transactionalOps.length > 0) {
+          await client.query('BEGIN');
           
-          for (const op of transactionalOps) {
-            await tx.query(op);
+          try {
+            await client.query('SET LOCAL lock_timeout = $1', ['30s']);
+            await client.query('SET LOCAL statement_timeout = $1', ['5min']);
+            await client.query(`SET LOCAL search_path = ${format('%I', schemaName)}, public`);
+            
+            for (const op of transactionalOps) {
+              await client.query(op);
+            }
+            
+            await client.query('COMMIT');
+          } catch (txError) {
+            await client.query('ROLLBACK');
+            throw txError;
           }
-        });
+        }
+        
+        const executionTime = Date.now() - startTime;
+        
+        // Record successful migration (using same client)
+        await this.recordMigrationSuccess(client, pluginId, tenantId, migration, executionTime);
+        
+        return { success: true, executionTime };
+        
+      } catch (error) {
+        // Track errors for admin visibility (using same client)
+        await this.recordMigrationFailure(client, pluginId, tenantId, migration, error);
+        throw error;
+        
+      } finally {
+        // Always release advisory lock on same session
+        await client.query('SELECT pg_advisory_unlock($1, $2)', [pluginHash, tenantHash]);
       }
-      
-      const executionTime = Date.now() - startTime;
-      
-      // Record successful migration
-      await this.recordMigrationSuccess(pluginId, tenantId, migration, executionTime);
-      
-      return { success: true, executionTime };
-      
-    } catch (error) {
-      // Track errors for admin visibility
-      await this.recordMigrationFailure(pluginId, tenantId, migration, error);
-      throw error;
       
     } finally {
-      // Always release session-level advisory lock
-      await this.db.query('SELECT pg_advisory_unlock(hashtext($1))', [lockKey]);
+      // Release client back to pool
+      client.release();
     }
   }
   
-  private splitMigrationOps(sql: string): { concurrentOps: string[], transactionalOps: string[] } {
-    const statements = sql.split(';').map(s => s.trim()).filter(s => s);
+  private hashString(input: string): number {
+    // Simple hash function for advisory lock keys
+    let hash = 0;
+    for (let i = 0; i < input.length; i++) {
+      const char = input.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32bit integer
+    }
+    return Math.abs(hash);
+  }
+  
+  private parseMigrationStatements(sql: string): { concurrentOps: string[], transactionalOps: string[] } {
     const concurrentOps: string[] = [];
     const transactionalOps: string[] = [];
     
+    // Split statements more carefully, respecting SQL block comments and dollar-quoting
+    const statements = this.splitSqlStatements(sql);
+    
     for (const stmt of statements) {
-      if (stmt.includes('CONCURRENTLY')) {
-        concurrentOps.push(stmt);
+      // Check for explicit metadata marker or CONCURRENTLY keyword
+      if (stmt.includes('--@concurrent') || stmt.match(/CREATE\s+INDEX\s+CONCURRENTLY/i)) {
+        // Remove metadata marker if present
+        const cleanStmt = stmt.replace(/--@concurrent\s*/g, '').trim();
+        concurrentOps.push(cleanStmt);
       } else {
         transactionalOps.push(stmt);
       }
     }
     
     return { concurrentOps, transactionalOps };
+  }
+  
+  private splitSqlStatements(sql: string): string[] {
+    // Simple SQL statement splitter that respects basic quoting and comments
+    const statements: string[] = [];
+    let current = '';
+    let inSingleQuote = false;
+    let inDoubleQuote = false;
+    let inDollarQuote = '';
+    
+    for (let i = 0; i < sql.length; i++) {
+      const char = sql[i];
+      const nextChar = sql[i + 1];
+      
+      if (inDollarQuote) {
+        current += char;
+        if (char === '$' && sql.substring(i).startsWith(inDollarQuote)) {
+          inDollarQuote = '';
+          i += inDollarQuote.length - 1; // Skip the rest of the end marker
+        }
+      } else if (char === '$' && nextChar) {
+        // Check for dollar quoting start
+        const match = sql.substring(i).match(/^\$(\w*)\$/);
+        if (match) {
+          inDollarQuote = match[0];
+          current += match[0];
+          i += match[0].length - 1;
+        } else {
+          current += char;
+        }
+      } else if (inSingleQuote) {
+        current += char;
+        if (char === "'" && (i === 0 || sql[i-1] !== '\\')) {
+          inSingleQuote = false;
+        }
+      } else if (inDoubleQuote) {
+        current += char;
+        if (char === '"' && (i === 0 || sql[i-1] !== '\\')) {
+          inDoubleQuote = false;
+        }
+      } else if (char === "'") {
+        inSingleQuote = true;
+        current += char;
+      } else if (char === '"') {
+        inDoubleQuote = true;
+        current += char;
+      } else if (char === ';') {
+        // End of statement
+        if (current.trim()) {
+          statements.push(current.trim());
+        }
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    
+    // Add final statement if exists
+    if (current.trim()) {
+      statements.push(current.trim());
+    }
+    
+    return statements;
   }
 }
 ```
