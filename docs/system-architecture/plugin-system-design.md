@@ -465,7 +465,7 @@ export class SafeMigrationRunner {
       const tenantHash = this.hashString(tenantId);
       
       const lockResult = await client.query(`
-        SELECT pg_try_advisory_lock($1, $2) as acquired
+        SELECT pg_try_advisory_lock($1::int4, $2::int4) as acquired
       `, [pluginHash, tenantHash]);
       
       if (!lockResult.rows[0].acquired) {
@@ -481,9 +481,14 @@ export class SafeMigrationRunner {
         // Execute CONCURRENTLY operations (autocommit mode)
         for (const op of concurrentOps) {
           await client.query('SET lock_timeout = $1', ['30s']);
-          await client.query('SET statement_timeout = $1', ['10min']); // Longer for CONCURRENTLY
+          await client.query('SET statement_timeout = $1', ['10min']); // Longer for CONCURRENTLY  
           await client.query(`SET search_path = ${format('%I', schemaName)}, public`);
           await client.query(op);
+          
+          // Critical: Reset GUCs after each autocommit operation to prevent cross-tenant leakage
+          await client.query('RESET search_path');
+          await client.query('RESET lock_timeout'); 
+          await client.query('RESET statement_timeout');
         }
         
         // Execute remaining operations in transaction
@@ -520,24 +525,33 @@ export class SafeMigrationRunner {
         
       } finally {
         // Always release advisory lock on same session
-        await client.query('SELECT pg_advisory_unlock($1, $2)', [pluginHash, tenantHash]);
+        await client.query('SELECT pg_advisory_unlock($1::int4, $2::int4)', [pluginHash, tenantHash]);
       }
       
     } finally {
+      // Critical: Fully sanitize session before returning to pool
+      try {
+        await client.query('DISCARD ALL'); // Reset all session state
+      } catch (discardError) {
+        // Log but don't fail - fallback to manual reset
+        console.warn('DISCARD ALL failed, using manual reset', discardError);
+        await client.query('RESET ALL');
+      }
+      
       // Release client back to pool
       client.release();
     }
   }
   
   private hashString(input: string): number {
-    // Simple hash function for advisory lock keys
+    // Simple hash function for advisory lock keys (signed int32)
     let hash = 0;
     for (let i = 0; i < input.length; i++) {
       const char = input.charCodeAt(i);
       hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convert to 32bit integer
+      hash = hash | 0; // Force to signed 32-bit integer
     }
-    return Math.abs(hash);
+    return hash;
   }
   
   private parseMigrationStatements(sql: string): { concurrentOps: string[], transactionalOps: string[] } {
@@ -562,25 +576,66 @@ export class SafeMigrationRunner {
   }
   
   private splitSqlStatements(sql: string): string[] {
-    // Simple SQL statement splitter that respects basic quoting and comments
+    // Constrained SQL statement splitter for Phase 1
+    // Requires explicit --@concurrent markers for complex operations
     const statements: string[] = [];
     let current = '';
     let inSingleQuote = false;
     let inDoubleQuote = false;
     let inDollarQuote = '';
+    let inLineComment = false;
+    let inBlockComment = false;
     
     for (let i = 0; i < sql.length; i++) {
       const char = sql[i];
       const nextChar = sql[i + 1];
       
+      // Handle line comments
+      if (!inSingleQuote && !inDoubleQuote && !inDollarQuote && !inBlockComment) {
+        if (char === '-' && nextChar === '-') {
+          inLineComment = true;
+          current += char;
+          continue;
+        }
+      }
+      
+      if (inLineComment) {
+        current += char;
+        if (char === '\n') {
+          inLineComment = false;
+        }
+        continue;
+      }
+      
+      // Handle block comments  
+      if (!inSingleQuote && !inDoubleQuote && !inDollarQuote) {
+        if (char === '/' && nextChar === '*') {
+          inBlockComment = true;
+          current += char;
+          continue;
+        }
+      }
+      
+      if (inBlockComment) {
+        current += char;
+        if (char === '*' && nextChar === '/') {
+          inBlockComment = false;
+          i++; // Skip next char
+          current += '/';
+        }
+        continue;
+      }
+      
+      // Rest of parsing (dollar quotes, regular quotes, semicolons)
       if (inDollarQuote) {
         current += char;
         if (char === '$' && sql.substring(i).startsWith(inDollarQuote)) {
+          // Fix: Save tag length before clearing inDollarQuote
+          const tagLength = inDollarQuote.length;
           inDollarQuote = '';
-          i += inDollarQuote.length - 1; // Skip the rest of the end marker
+          i += tagLength - 1; // Skip rest of closing tag
         }
       } else if (char === '$' && nextChar) {
-        // Check for dollar quoting start
         const match = sql.substring(i).match(/^\$(\w*)\$/);
         if (match) {
           inDollarQuote = match[0];
@@ -591,12 +646,20 @@ export class SafeMigrationRunner {
         }
       } else if (inSingleQuote) {
         current += char;
-        if (char === "'" && (i === 0 || sql[i-1] !== '\\')) {
+        if (char === "'" && nextChar === "'") {
+          // PostgreSQL doubled quote escaping
+          current += nextChar;
+          i++;
+        } else if (char === "'") {
           inSingleQuote = false;
         }
       } else if (inDoubleQuote) {
         current += char;
-        if (char === '"' && (i === 0 || sql[i-1] !== '\\')) {
+        if (char === '"' && nextChar === '"') {
+          // PostgreSQL doubled quote escaping
+          current += nextChar;
+          i++;
+        } else if (char === '"') {
           inDoubleQuote = false;
         }
       } else if (char === "'") {
@@ -606,7 +669,6 @@ export class SafeMigrationRunner {
         inDoubleQuote = true;
         current += char;
       } else if (char === ';') {
-        // End of statement
         if (current.trim()) {
           statements.push(current.trim());
         }
@@ -616,7 +678,6 @@ export class SafeMigrationRunner {
       }
     }
     
-    // Add final statement if exists
     if (current.trim()) {
       statements.push(current.trim());
     }
