@@ -74,6 +74,7 @@ authRoutes.post('/login', validateData(userLoginSchema), async (req, res) => {
     
     if (domain === null) {
       // System user (sysadmin) - lookup in system table
+      console.log('🔍 System user lookup for:', username);
       lookupUsername = username;
       
       const results = await db.select().from(table.user).where(
@@ -83,10 +84,14 @@ authRoutes.post('/login', validateData(userLoginSchema), async (req, res) => {
         ));
       
       user = results.at(0);
+      console.log('🔍 System user found:', !!user);
     } else {
       // Tenant user - lookup tenant by domain and search in tenant schema
+      console.log('🔍 Looking up tenant for domain:', domain);
       const tenant = await findTenantByDomain(domain);
+      console.log('🔍 Tenant found:', !!tenant);
       if (!tenant) {
+        console.log('❌ Tenant not found, returning 400');
         return res.status(400).json({ message: 'Invalid credentials' });
       }
       
