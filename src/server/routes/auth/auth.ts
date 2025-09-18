@@ -60,21 +60,17 @@ const loginRateLimiter = rateLimit({
  *         description: Invalid request body
  */
 authRoutes.post('/login', validateData(userLoginSchema), async (req, res) => {
-  console.log('🔴 LOGIN DEBUG - URL:', req.url, 'Method:', req.method);
   const { username: loginInput, password } = req.body;
   
   try {
-    console.log('🔍 Parsing login input:', loginInput);
     // Parse login input - handles both sysadmin and username@domain.com formats
     const { username, domain } = parseLoginInput(loginInput);
-    console.log('🔍 Parsed result:', { username, domain });
     
     let user: any = null;
     let lookupUsername: string;
     
     if (domain === null) {
       // System user (sysadmin) - lookup in system table
-      console.log('🔍 System user lookup for:', username);
       lookupUsername = username;
       
       const results = await db.select().from(table.user).where(
@@ -84,29 +80,21 @@ authRoutes.post('/login', validateData(userLoginSchema), async (req, res) => {
         ));
       
       user = results.at(0);
-      console.log('🔍 System user found:', !!user);
     } else {
       // Tenant user - lookup tenant by domain and search in tenant schema
-      console.log('🔍 Looking up tenant for domain:', domain);
       const tenant = await findTenantByDomain(domain);
-      console.log('🔍 Tenant found:', !!tenant);
       if (!tenant) {
-        console.log('❌ Tenant not found, returning 400');
         return res.status(400).json({ message: 'Invalid credentials' });
       }
       
       // Get tenant-specific postgres client
-      console.log('🔍 Getting tenant database client for tenant:', tenant.id);
       const { TenantDatabaseManager } = await import('src/server/lib/db/tenant-db');
       const manager = TenantDatabaseManager.getInstance();
       const client = await manager.getTenantClient(tenant.id);
-      console.log('🔍 Tenant client obtained, querying for user:', username);
       
       // Query tenant schema for user (explicitly specify schema name)
       const schemaName = `tenant_${tenant.code.toLowerCase()}`;
-      console.log('🔍 Using schema name:', schemaName);
       const tableName = `${schemaName}.users`;
-      console.log('🔍 Using table name:', tableName);
       const results = await client.unsafe(`
         SELECT id, username, password_hash, fullname, email, status 
         FROM ${tableName} 
@@ -114,10 +102,8 @@ authRoutes.post('/login', validateData(userLoginSchema), async (req, res) => {
         LIMIT 1
       `, [username]) as Array<{ id: string; username: string; password_hash: string; fullname: string; email: string; status: 'active'|'inactive' }>;
       
-      console.log('🔍 Tenant user query executed, results count:', results.length);
       if (results.length > 0) {
         const row = results[0];
-        console.log('🔍 Found tenant user:', row.username);
         // Map database fields to expected format
         user = {
           ...row,
@@ -125,47 +111,30 @@ authRoutes.post('/login', validateData(userLoginSchema), async (req, res) => {
           tenant_id: tenant.id,
           tenant_code: tenant.code
         };
-      } else {
-        console.log('❌ No tenant user found with username:', username);
       }
     }
 
     if (!user) {
-      console.log('❌ No user found, returning 400');
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
-    console.log('🔍 User found, checking password for:', user.username);
-    console.log('🔍 Password hash exists:', !!user.passwordHash);
-    
     // Check the password
     const isMatch = await bcrypt.compare(password, user.passwordHash);
-    console.log('🔍 Password match result:', isMatch);
     if (!isMatch) {
-      console.log('❌ Password mismatch, returning 400');
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
-    console.log('🔍 Password verified, creating JWT tokens');
-    
     // Create a JWT with appropriate user info
     const tokenPayload = domain === null 
       ? { username: user.username } // System user
       : { username: user.username, tenant_id: user.tenant_id, tenant_code: user.tenant_code }; // Tenant user
       
-    console.log('🔍 Token payload:', tokenPayload);
-    
     const accessToken = jwt.sign(tokenPayload, ACCESS_TOKEN_SECRET, { expiresIn: '24h' });
     const refreshToken = jwt.sign(tokenPayload, REFRESH_TOKEN_SECRET, { expiresIn: '48h' });
 
-    console.log('🔍 Tokens created successfully, sending response');
     res.json({ accessToken, refreshToken });
 
   } catch (error) {
-    // LOG THE ACTUAL ERROR FOR DEBUGGING
-    console.log('❌ LOGIN ERROR:', error);
-    console.log('❌ Error message:', (error as Error).message);
-    console.log('❌ Error stack:', (error as Error).stack);
     // Always return generic error message for security (prevent enumeration)
     return res.status(400).json({ message: 'Invalid credentials' });
   }

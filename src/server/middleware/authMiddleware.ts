@@ -24,6 +24,8 @@ declare global {
 
 export interface DecodedToken {
   username: string;
+  tenant_id?: string;
+  tenant_code?: string;
   // Add other properties from your JWT payload
 }
 
@@ -42,15 +44,44 @@ export const authenticated = () => async (req: Request, res: Response, next: Nex
     if (!decoded.username) {
       return res.status(401).json({ message: 'Invalid token.' });
     }
-    const currentUser = await db
-      .select()
-      .from(user)
-      .where(and(
-        eq(user.username, decoded.username),
-        eq(user.status, "active"))
-      )
-      .limit(1)
-      .then((rows) => rows[0]);
+
+    let currentUser: any = null;
+
+    if (decoded.tenant_id && decoded.tenant_code) {
+      // Tenant user - lookup in tenant schema
+      const { TenantDatabaseManager } = await import('src/server/lib/db/tenant-db');
+      const manager = TenantDatabaseManager.getInstance();
+      const client = await manager.getTenantClient(decoded.tenant_id);
+      
+      const schemaName = `tenant_${decoded.tenant_code.toLowerCase()}`;
+      const results = await client.unsafe(`
+        SELECT id, username, fullname, email, status 
+        FROM ${schemaName}.users 
+        WHERE username = $1 AND status = 'active' 
+        LIMIT 1
+      `, [decoded.username]) as Array<{ id: string; username: string; fullname: string; email: string; status: 'active'|'inactive' }>;
+      
+      if (results.length > 0) {
+        const row = results[0];
+        currentUser = {
+          ...row,
+          activeTenantId: decoded.tenant_id,
+          isSuperAdmin: false // Tenant users are not super admins
+        };
+      }
+    } else {
+      // System user (sysadmin) - lookup in system table
+      currentUser = await db
+        .select()
+        .from(user)
+        .where(and(
+          eq(user.username, decoded.username),
+          eq(user.status, "active"))
+        )
+        .limit(1)
+        .then((rows) => rows[0]);
+    }
+
     if (!currentUser) {
       return res.status(401).json({ message: 'Unauthorized.' });
     }
@@ -63,7 +94,7 @@ export const authenticated = () => async (req: Request, res: Response, next: Nex
       isSuperAdmin: currentUser.isSuperAdmin || false
     };
     
-    // NEW: Automatically set tenant-scoped database connection
+    // Set tenant-scoped database connection
     if (!currentUser.isSuperAdmin) {
       req.db = await tenantDbManager.getTenantDb(currentUser.activeTenantId);
     } else {
