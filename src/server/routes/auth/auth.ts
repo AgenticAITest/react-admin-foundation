@@ -14,9 +14,19 @@ import { parseLoginInput, findTenantByDomain, buildStoredUsername } from 'src/se
 
 
 
-const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET || 'my_access_token_secret_key';
-const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET || 'my_refresh_token_secret_key';
-const RESET_PASSWORD_TOKEN_SECRET = process.env.RESET_PASSWORD_TOKEN_SECRET || 'my_reset_password_token_secret_key';
+const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET;
+const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET;
+const RESET_PASSWORD_TOKEN_SECRET = process.env.RESET_PASSWORD_TOKEN_SECRET;
+
+if (!ACCESS_TOKEN_SECRET) {
+  throw new Error('ACCESS_TOKEN_SECRET environment variable is required for security');
+}
+if (!REFRESH_TOKEN_SECRET) {
+  throw new Error('REFRESH_TOKEN_SECRET environment variable is required for security');
+}
+if (!RESET_PASSWORD_TOKEN_SECRET) {
+  throw new Error('RESET_PASSWORD_TOKEN_SECRET environment variable is required for security');
+}
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 
 const authRoutes = Router();
