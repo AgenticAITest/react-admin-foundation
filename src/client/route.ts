@@ -50,6 +50,7 @@ import ModuleMarketplace from "./pages/super-admin/modules/ModuleMarketplace";
 import SystemStatus from "./pages/super-admin/system-status/SystemStatus";
 import AuditLogs from "./pages/super-admin/audit-logs/AuditLogs";
 import SuperAdminUsers from "./pages/super-admin/users/SuperAdminUsers";
+import PluginManagement from "./pages/super-admin/plugins/PluginManagement";
 
 export const router = createBrowserRouter([
   {
@@ -168,6 +169,7 @@ export const router = createBrowserRouter([
           { path: "dashboard", Component: SuperAdminDashboard },
           { path: "tenants", Component: TenantManagement },
           { path: "modules", Component: ModuleMarketplace },
+          { path: "plugins", Component: PluginManagement },
           { path: "system-status", Component: SystemStatus },
           { path: "audit-logs", Component: AuditLogs },
           { path: "users", Component: SuperAdminUsers },

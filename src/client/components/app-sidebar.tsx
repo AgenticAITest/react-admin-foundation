@@ -169,6 +169,12 @@ const data = {
       icon: Package,
     },
     {
+      id: "super-admin-plugins",
+      title: "Plugins",
+      url: "/super-admin/plugins",
+      icon: Puzzle,
+    },
+    {
       id: "super-admin-system-status", 
       title: "System Status",
       url: "/super-admin/system-status",
