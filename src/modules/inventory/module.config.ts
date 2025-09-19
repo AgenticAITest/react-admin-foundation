@@ -1,4 +1,12 @@
 
+// Phase-1 namespace:
+//   Routes are mounted under /api/plugins/<module-id>.
+//   A legacy prefix (e.g., /api/<module-id>) may be temporarily mounted for transition.
+//
+// Toggle semantics:
+//   - enabled_global = false  => plugin is OFF platform-wide (tenants cannot override).
+//   - enabled_global = true   => tenant-level 'enabled' must also be true to allow access.
+
 export const productModule = {
   id: "inventory",
   name: "Product Management",
