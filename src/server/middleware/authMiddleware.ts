@@ -126,8 +126,8 @@ export const authorized = (
     const requiredRoles = Array.isArray(roles) ? roles : [roles];
     const requiredPermissions = Array.isArray(permissions) ? permissions : [permissions];
     try {
-      const hasRole = await userHasRoles(username, requiredRoles);
-      const hasPermission = await userHasPermissions(username, requiredPermissions);
+      const hasRole = await userHasRoles(username, requiredRoles, req.user?.isSuperAdmin, req.user?.activeTenantId);
+      const hasPermission = await userHasPermissions(username, requiredPermissions, req.user?.isSuperAdmin, req.user?.activeTenantId);
       //console.log("hasRole : ", hasRole);
       //console.log("hasPermission : ", hasPermission);
       if (operator === 'or' && (hasRole || hasPermission)) {
@@ -158,7 +158,7 @@ export const hasRoles = (roles: string | string[]) => async (req: Request, res: 
   const username = req.user.username;
   const requiredRoles = Array.isArray(roles) ? roles : [roles];
   try {
-    const hasRole = await userHasRoles(username, requiredRoles);
+    const hasRole = await userHasRoles(username, requiredRoles, req.user?.isSuperAdmin, req.user?.activeTenantId);
     //console.log("hasRole : ", hasRole);
     if (hasRole) {
       next();
@@ -178,7 +178,7 @@ export const hasPermissions = (permissions: string | string[]) => async (req: Re
   const username = req.user.username;
   const requiredPermissions = Array.isArray(permissions) ? permissions : [permissions];
   try {
-    const hasPermission = await userHasPermissions(username, requiredPermissions);
+    const hasPermission = await userHasPermissions(username, requiredPermissions, req.user?.isSuperAdmin, req.user?.activeTenantId);
     //console.log("hasPermission : ", hasPermission);
     if (hasPermission) {
       next();
@@ -191,62 +191,110 @@ export const hasPermissions = (permissions: string | string[]) => async (req: Re
   }
 };
 
-const userHasRoles = async (username: string, roleCodes: string[]): Promise<boolean> => {
+const userHasRoles = async (username: string, roleCodes: string[], isSuperAdmin?: boolean, activeTenantId?: string): Promise<boolean> => {
   if (roleCodes.length === 0) {
     return true;
   }
-  const subquery = db
-    .select()
-    .from(userRole)
-    .innerJoin(role, eq(userRole.roleId, role.id))
-    .innerJoin(user, eq(userRole.userId, user.id))
-    .where(
-      and(
-        eq(user.username, username),
-        inArray(role.code, roleCodes),
-        eq(userRole.tenantId, user.activeTenantId),
-        eq(role.tenantId, user.activeTenantId)
-      )
-    );
+  if (isSuperAdmin) {
+    // Super admin users - query system schema
+    const subquery = db
+      .select()
+      .from(userRole)
+      .innerJoin(role, eq(userRole.roleId, role.id))
+      .innerJoin(user, eq(userRole.userId, user.id))
+      .where(
+        and(
+          eq(user.username, username),
+          inArray(role.code, roleCodes),
+          eq(userRole.tenantId, user.activeTenantId),
+          eq(role.tenantId, user.activeTenantId)
+        )
+      );
 
-  const result = await db
-    .select({
-      exists: sql<boolean>`exists(${subquery})`
-    })
-    .from(sql`(select 1) as dummy`)
-    .limit(1);
-
-  return result[0]?.exists || false;
+    const result = await db
+      .select({
+        exists: sql<boolean>`exists(${subquery})`
+      })
+      .from(sql`(select 1) as dummy`)
+      .limit(1);
+      
+    return result[0]?.exists || false;
+  } else {
+    // Tenant users - use raw postgres client
+    if (!activeTenantId) {
+      return false;
+    }
+    
+    const { TenantDatabaseManager } = await import('src/server/lib/db/tenant-db');
+    const manager = TenantDatabaseManager.getInstance();
+    const client = await manager.getTenantClient(activeTenantId);
+    
+    const result = await client.unsafe(`
+      SELECT EXISTS(
+        SELECT 1 FROM user_roles ur
+        INNER JOIN roles r ON ur.role_id = r.id
+        INNER JOIN users u ON ur.user_id = u.id
+        WHERE u.username = $1 AND r.code = ANY($2::text[])
+      ) as exists
+    `, [username, roleCodes]);
+    
+    return result[0]?.exists || false;
+  }
 }
 
-const userHasPermissions = async (username: string, permissionCodes: string[]): Promise<boolean> => {
+const userHasPermissions = async (username: string, permissionCodes: string[], isSuperAdmin?: boolean, activeTenantId?: string): Promise<boolean> => {
   if (permissionCodes.length === 0) {
     return true;
   }
-  const subquery = db
-    .select()
-    .from(userRole)
-    .innerJoin(role, eq(userRole.roleId, role.id))
-    .innerJoin(rolePermission, eq(role.id, rolePermission.roleId))
-    .innerJoin(permission, eq(rolePermission.permissionId, permission.id))
-    .innerJoin(user, eq(userRole.userId, user.id))
-    .where(
-      and(
-        eq(user.username, username),
-        inArray(permission.code, permissionCodes),
-        eq(userRole.tenantId, user.activeTenantId),
-        eq(role.tenantId, user.activeTenantId),
-        eq(rolePermission.tenantId, user.activeTenantId),
-        eq(permission.tenantId, user.activeTenantId)
-      )
-    );
+  if (isSuperAdmin) {
+    // Super admin users - query system schema
+    const subquery = db
+      .select()
+      .from(userRole)
+      .innerJoin(role, eq(userRole.roleId, role.id))
+      .innerJoin(rolePermission, eq(role.id, rolePermission.roleId))
+      .innerJoin(permission, eq(rolePermission.permissionId, permission.id))
+      .innerJoin(user, eq(userRole.userId, user.id))
+      .where(
+        and(
+          eq(user.username, username),
+          inArray(permission.code, permissionCodes),
+          eq(userRole.tenantId, user.activeTenantId),
+          eq(role.tenantId, user.activeTenantId),
+          eq(rolePermission.tenantId, user.activeTenantId),
+          eq(permission.tenantId, user.activeTenantId)
+        )
+      );
 
-  const result = await db
-    .select({
-      exists: sql<boolean>`exists(${subquery})`
-    })
-    .from(sql`(select 1) as dummy`)
-    .limit(1);
-
-  return result[0]?.exists || false;
+    const result = await db
+      .select({
+        exists: sql<boolean>`exists(${subquery})`
+      })
+      .from(sql`(select 1) as dummy`)
+      .limit(1);
+      
+    return result[0]?.exists || false;
+  } else {
+    // Tenant users - use raw postgres client
+    if (!activeTenantId) {
+      return false;
+    }
+    
+    const { TenantDatabaseManager } = await import('src/server/lib/db/tenant-db');
+    const manager = TenantDatabaseManager.getInstance();
+    const client = await manager.getTenantClient(activeTenantId);
+    
+    const result = await client.unsafe(`
+      SELECT EXISTS(
+        SELECT 1 FROM user_roles ur
+        INNER JOIN roles r ON ur.role_id = r.id
+        INNER JOIN role_permissions rp ON r.id = rp.role_id
+        INNER JOIN permissions p ON rp.permission_id = p.id
+        INNER JOIN users u ON ur.user_id = u.id
+        WHERE u.username = $1 AND p.code = ANY($2::text[])
+      ) as exists
+    `, [username, permissionCodes]);
+    
+    return result[0]?.exists || false;
+  }
 }
