@@ -1,0 +1,78 @@
+Do this for T04
+
+Mount order (very important)
+
+Keep your tiny /health pre-router first.
+
+Then mount the gate.
+
+Then mount the plugin router.
+
+const prefix = `/api/plugins/${config.id}`;
+
+const pre = Router();
+pre.get('/health', (_req, res) => res.json({ ok: true, plugin: config.id }));
+
+this.app.use(prefix, pre);       // health stays open
+this.app.use(prefix, gate);      // gate guards everything else
+this.app.use(prefix, router);    // actual routes
+
+
+If you kept a legacy mount, apply the same gate there too.
+
+Gate logic (global first → tenant)
+Use one roundtrip (optional optimization) or two queries—either is fine:
+
+Single query
+
+const sql = `
+ select p.enabled_global,
+        coalesce(tp.enabled, false) as enabled_tenant
+ from sys_plugins p
+ left join sys_tenant_plugins tp
+   on tp.plugin_id = p.plugin_id and tp.tenant_id = $1
+ where p.plugin_id = $2
+`;
+const { rows:[row] } = await db.execute(sql, [tenantId, config.id] as any);
+if (!row?.enabled_global) {
+  res.setHeader('X-Plugin-Denied', 'global-off');
+  return res.status(403).json({ error: 'PLUGIN_GLOBALLY_DISABLED', pluginId: config.id, tenantId });
+}
+if (!row.enabled_tenant) {
+  res.setHeader('X-Plugin-Denied', 'tenant-off');
+  return res.status(403).json({ error: 'PLUGIN_DISABLED', pluginId: config.id, tenantId });
+}
+
+
+Auth & bypasses
+
+If your platform has a super-admin who may hit plugin routes, add a simple bypass:
+
+if (req.user?.isSuperAdmin) return next();
+
+
+If no tenantId, return 401 { error: 'NO_TENANT' }.
+
+Keep /health open
+Don’t run the gate on /health. With the pre-router pattern above, you’re already good.
+
+Consistency headers
+Add X-Plugin-Denied: global-off | tenant-off on 403s (helps support).
+
+Quick test matrix (after T04)
+
+Global OFF, Tenant ON → 403 PLUGIN_GLOBALLY_DISABLED
+
+Global ON, Tenant MISSING/OFF → 403 PLUGIN_DISABLED
+
+Global ON, Tenant ON → normal 2xx
+
+/api/plugins/<id>/health → 200 (always)
+
+Common gotchas
+
+Mounting order wrong (gate after router) → routes bypass the gate.
+
+Legacy path left ungated → inconsistent behavior.
+
+Forgetting default “missing tenant row ⇒ disabled”.

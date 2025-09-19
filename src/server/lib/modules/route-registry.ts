@@ -2,6 +2,7 @@ import { Express, Router } from 'express';
 import { ModuleConfig } from './module-registry';
 import fs from 'fs/promises';
 import path from 'path';
+import postgres from 'postgres';
 
 export interface RouteInfo {
   moduleId: string;
@@ -62,13 +63,56 @@ export class RouteRegistry {
     const pre = Router();
     pre.get('/health', (_req, res) => res.json({ ok: true, plugin: config.id }));
 
-    // Mount the pre-router and the plugin router under the namespace
-    this.app.use(prefix, pre);
-    this.app.use(prefix, router);
+    // Gate middleware - per-tenant access control
+    const gate = async (req: any, res: any, next: any) => {
+      try {
+        const tenantId = req.user?.activeTenantId || req.auth?.tenant_id;
+        if (!tenantId) return res.status(401).json({ error: 'NO_TENANT' });
+
+        // Create postgres client for raw query
+        const sql = postgres(process.env.DATABASE_URL!);
+        
+        try {
+          // Single query optimization: check both global and tenant toggles
+          const result = await sql`
+            select p.enabled_global,
+                   coalesce(tp.enabled, false) as enabled_tenant
+            from sys_plugins p
+            left join sys_tenant_plugins tp
+              on tp.plugin_id = p.plugin_id and tp.tenant_id = ${tenantId}
+            where p.plugin_id = ${config.id}
+          `;
+          const row = result[0];
+          
+          if (!row?.enabled_global) {
+            res.setHeader('X-Plugin-Denied', 'global-off');
+            return res.status(403).json({ error: 'PLUGIN_GLOBALLY_DISABLED', pluginId: config.id, tenantId });
+          }
+          if (!row.enabled_tenant) {
+            res.setHeader('X-Plugin-Denied', 'tenant-off');
+            return res.status(403).json({ error: 'PLUGIN_DISABLED', pluginId: config.id, tenantId });
+          }
+
+          (req as any).pluginId = config.id;
+          (req as any).tenantId = tenantId;
+          next();
+        } finally {
+          await sql.end();
+        }
+      } catch (e) {
+        next(e);
+      }
+    };
+
+    // Mount in correct order: health pre-router → gate → plugin router
+    this.app.use(prefix, pre);       // health stays open
+    this.app.use(prefix, gate);      // gate guards everything else
+    this.app.use(prefix, router);    // actual routes
 
     // OPTIONAL (temporary): keep legacy mount for transition, then remove later
     const legacy = config.apiRoutes.prefix;
     if (legacy && legacy !== prefix) {
+      this.app.use(legacy, gate);    // gate the legacy routes too
       this.app.use(legacy, router);
     }
 
