@@ -4,14 +4,14 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "nodemon -w src/server -x tsx src/server/main.ts",
+    "dev:api": "tsx sandbox/server.ts",
+    "dev:web": "vite --port 5173",
+    "dev": "concurrently -k -n api,web -c blue,green \"npm:dev:api\" \"npm:dev:web\"",
     "sandbox:dev": "tsx sandbox/server.ts",
-    "start": "NODE_ENV=production tsx src/server/main.ts",
     "build": "vite build",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:seed": "tsx src/server/lib/db/seed.ts",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
@@ -64,7 +64,6 @@
     "nodemailer": "^7.0.5",
     "pg": "^8.16.3",
     "playwright": "^1.55.0",
-    "postgres": "^3.4.7",
     "react": "^19.1.0",
     "react-day-picker": "^9.9.0",
     "react-dom": "^19.1.0",
@@ -102,6 +101,7 @@
     "nodemon": "^3.1.10",
     "tsx": "^4.20.3",
     "tw-animate-css": "^1.3.6",
-    "vite": "^6.3.3"
+    "vite": "^6.3.3",
+    "concurrently": "^9.1.0"
   }
 }
