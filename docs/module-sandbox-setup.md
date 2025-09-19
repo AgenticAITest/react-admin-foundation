@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Module Sandbox provides a complete isolated development environment for creating and testing business modules before integrating them into the main React Admin Foundation. This guide explains how to set up a separate repository for independent module development.
+The Module Sandbox provides a complete isolated development environment for creating and testing business modules using a clean plugin architecture. This system enables business analysts to develop functional modules with AI assistance while maintaining proper separation of concerns and production-ready patterns.
 
 ## 🎯 Why Use a Separate Repository?
 
@@ -37,26 +37,29 @@ This approach creates a completely separate development environment.
 Copy these components from your foundation repository to the new sandbox project:
 
 ```
-📁 Sandbox Repository Structure:
+📁 Clean Plugin Architecture:
+├── server/
+│   └── index.ts            # Pure plugin with business logic (MAIN FOCUS)
 ├── sandbox/
-│   ├── bootstrap.ts         # Database initialization
-│   ├── rbac.ts             # Permission system
-│   ├── server.ts           # Module server
-│   └── withTenantTx.ts     # Database helpers
+│   ├── bootstrap.ts        # Database initialization
+│   ├── rbac.ts            # Permission system
+│   ├── server.ts          # Infrastructure server
+│   └── withTenantTx.ts    # Database helpers
 ├── client/
 │   ├── src/
-│   │   ├── components/     # UI components
-│   │   ├── hooks/          # React hooks
-│   │   ├── lib/            # Utilities
-│   │   ├── provider/       # Context providers
-│   │   ├── main.tsx        # React app entry
-│   │   └── styles.css      # Styling
-│   └── index.html          # HTML template
-├── db/
-│   ├── client.ts           # Database client
-│   └── schema.ts           # Database schema
-├── package.json            # Dependencies
-└── README.md               # Setup instructions
+│   │   ├── components/    # UI components
+│   │   ├── hooks/         # React hooks
+│   │   ├── lib/           # Utilities
+│   │   ├── provider/      # Context providers
+│   │   ├── main.tsx       # React app entry
+│   │   └── styles.css     # Styling
+│   └── index.html         # HTML template
+├── shared/
+│   └── schema.ts          # Database schema
+├── vite.config.ts         # Vite proxy configuration
+├── .env.example          # Environment variables template
+├── package.json          # Dependencies
+└── README.md             # Setup instructions
 ```
 
 #### Step 3: Install Dependencies
@@ -69,7 +72,9 @@ Create `package.json` with sandbox-specific dependencies:
   "version": "1.0.0",
   "description": "Module development sandbox for React Admin Foundation",
   "scripts": {
-    "dev": "tsx sandbox/server.ts",
+    "dev": "vite",
+    "sandbox:dev": "tsx sandbox/server.ts",
+    "dev:full": "concurrently \"npm run sandbox:dev\" \"npm run dev\"",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio"
   },
@@ -142,8 +147,18 @@ From your current foundation project:
    ```
 
 3. **Configure Environment:**
-   - Set `DATABASE_URL` environment variable
-   - Database will be automatically configured in Replit
+   Create `.env` file from template:
+   ```bash
+   cp .env.example .env
+   ```
+   
+   Set required variables:
+   ```bash
+   DATABASE_URL=postgresql://username:password@host:port/database
+   DEV_TENANT_CODE=dev
+   DEV_TENANT_SCHEMA=main
+   PORT=8787
+   ```
 
 4. **Initialize Database:**
    ```bash
@@ -154,13 +169,13 @@ From your current foundation project:
 
 #### Phase 1: Setup New Module
 
-1. **Replace Module Placeholder:**
-   - Find and replace `<module-id>` throughout the codebase
-   - Example: Replace with `inventory`, `orders`, `products`, etc.
+1. **Replace Module ID:**
+   - Update `MODULE_ID` constant in `server/index.ts`
+   - Example: Change `'sample'` to `'inventory'`, `'orders'`, `'products'`, etc.
 
 2. **Customize Database Schema:**
    ```typescript
-   // In db/schema.ts - add your module tables
+   // In shared/schema.ts - add your module tables
    export const inventory = pgTable('inventory', {
      id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
      name: varchar("name", { length: 255 }).notNull(),
@@ -170,31 +185,40 @@ From your current foundation project:
    });
    ```
 
-3. **Update API Endpoints:**
+3. **Implement Plugin Business Logic:**
    ```typescript
-   // In sandbox/server.ts - customize your business logic
-   app.get('/api/plugins/inventory/items', async (req, res) => {
-     // Your module-specific logic here
-   });
+   // In server/index.ts - your pure plugin implementation
+   export const register = (ctx: PluginContext) => {
+     // Add your CRUD endpoints using ctx.router, ctx.rbac, ctx.withTenantTx
+     ctx.router.get('/items', ctx.rbac.require('inventory.items.read'), async (req, res) => {
+       // Your business logic here using ctx.withTenantTx
+     });
+   };
    ```
 
 #### Phase 2: Develop Features
 
-1. **Start Development Server:**
+1. **Start Development Servers:**
    ```bash
-   npm run dev
+   # Option 1: Start both servers together
+   npm run dev:full
+   
+   # Option 2: Start separately in two terminals
+   npm run sandbox:dev  # API server on port 8787
+   npm run dev         # Vite dev server on port 5173
    ```
 
 2. **Access Development Interface:**
-   - Open browser to Replit preview URL
-   - Professional dashboard interface loads automatically
-   - Test RBAC permissions in real-time
+   - Frontend: http://localhost:5173 (Vite dev server)
+   - API Health: http://localhost:8787/api/plugins/sample/health
+   - Professional dashboard interface with hot reload
+   - Vite proxy automatically routes `/api` calls to backend
 
 3. **Develop Module Features:**
-   - **Backend:** Add business logic to server endpoints
-   - **Frontend:** Customize UI components in client/src/
-   - **Database:** Add/modify tables in schema
-   - **Permissions:** Define and test RBAC rules
+   - **Plugin Logic:** Implement business logic in `server/index.ts`
+   - **Frontend:** Customize UI components in `client/src/`
+   - **Database:** Add/modify tables in `shared/schema.ts`
+   - **Infrastructure:** Sandbox handles permissions, auth, hosting
 
 #### Phase 3: Test and Validate
 
@@ -217,9 +241,10 @@ From your current foundation project:
 
 1. **Prepare Module for Integration:**
    ```bash
-   # Copy your completed module files
-   cp -r sandbox/server.ts ../foundation/src/modules/inventory/
+   # Copy your pure plugin implementation
+   cp server/index.ts ../foundation/src/modules/inventory/
    cp -r client/src/ ../foundation/src/client/modules/inventory/
+   cp shared/schema.ts ../foundation/src/modules/inventory/schema.ts
    ```
 
 2. **Update Foundation Application:**
@@ -244,31 +269,41 @@ Required environment variables for sandbox operation:
 # Database (automatically configured in Replit)
 DATABASE_URL=postgresql://username:password@host:port/database
 
-# Optional development settings
+# Sandbox Development Settings
+DEV_TENANT_CODE=dev
+DEV_TENANT_SCHEMA=main
+PORT=8787
+
+# Optional settings
 NODE_ENV=development
-PORT=5000
 ```
 
 ### Module Customization
 
-#### Replace Module ID
+#### Clean Plugin Pattern
 
-Find and replace these patterns throughout the codebase:
+The core of your module is the plugin in `server/index.ts`:
 
 ```typescript
-// File paths and API routes
-'/api/plugins/<module-id>/' → '/api/plugins/your-module/'
+// Module metadata
+export const meta = {
+  id: 'your-module',  // ← Change this ID
+  name: 'Your Module',
+  version: '0.1.0'
+};
 
-// Permission strings  
-'<module-id>.items.read' → 'your-module.items.read'
-
-// UI text and titles
-'<module-id> Sandbox' → 'Your Module Sandbox'
+// Plugin registration with dependency injection
+export const register = (ctx: PluginContext) => {
+  // Use ctx.router for routes
+  // Use ctx.rbac.require() for permissions
+  // Use ctx.withTenantTx() for database operations
+  // Use ctx.log for logging
+};
 ```
 
 #### Add Custom Business Logic
 
-**Database Schema (db/schema.ts):**
+**Database Schema (shared/schema.ts):**
 ```typescript
 export const yourModuleTable = pgTable('your_module', {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -278,12 +313,22 @@ export const yourModuleTable = pgTable('your_module', {
 });
 ```
 
-**API Endpoints (sandbox/server.ts):**
+**Plugin Implementation (server/index.ts):**
 ```typescript
-// Add your module-specific endpoints
-app.get('/api/plugins/your-module/custom-endpoint', requirePerm('your-module.custom.read'), async (req, res) => {
-  // Your business logic here
-});
+export const register = (ctx: PluginContext) => {
+  // CRUD endpoints with proper dependency injection
+  ctx.router.get('/items', ctx.rbac.require('your-module.items.read'), async (req, res) => {
+    try {
+      const result = await ctx.withTenantTx(req.user.activeTenantId, async (tx) => {
+        return await tx.select().from(yourModuleTable);
+      });
+      res.json(result);
+    } catch (error) {
+      ctx.log.error('Error fetching items:', error);
+      res.status(500).json({ error: 'Failed to fetch items' });
+    }
+  });
+};
 ```
 
 **UI Components (client/src/main.tsx):**
@@ -329,12 +374,16 @@ app.get('/api/plugins/your-module/custom-endpoint', requirePerm('your-module.cus
 ### Code Organization
 
 ```
-📁 Recommended Module Structure:
-├── Business Logic (sandbox/server.ts)
-├── Database Schema (db/schema.ts) 
-├── Frontend Components (client/src/)
-├── RBAC Permissions (sandbox/rbac.ts)
-└── Integration Tests
+📁 Clean Plugin Architecture:
+├── Pure Plugin (server/index.ts)        # ← YOUR MAIN FOCUS
+├── Database Schema (shared/schema.ts)    # ← Define your tables
+├── Frontend Components (client/src/)     # ← Build your UI
+├── Infrastructure (sandbox/)             # ← Managed by system
+│   ├── bootstrap.ts                     #   Database initialization
+│   ├── rbac.ts                         #   Permission system
+│   ├── server.ts                       #   Hosting infrastructure
+│   └── withTenantTx.ts                 #   Database helpers
+└── Development (vite.config.ts)         # ← Proxy configuration
 ```
 
 ## 🚨 Common Issues and Solutions
@@ -372,11 +421,12 @@ After setting up your module sandbox:
 
 ## 💡 Tips for Success
 
-- **Start Small:** Begin with simple operations and gradually add complexity
-- **Use the Dashboard:** The professional interface helps visualize your module
+- **Focus on the Plugin:** Your main work is in `server/index.ts` - the infrastructure is handled for you
+- **Use Dependency Injection:** Leverage `ctx.router`, `ctx.rbac`, `ctx.withTenantTx`, and `ctx.log` for clean code
+- **Test with Vite:** The hot-reload development experience makes testing fast and efficient
+- **Follow Clean Patterns:** Business logic stays in the plugin, infrastructure stays in sandbox
+- **Use the Dashboard:** The professional interface helps visualize and test your module
 - **Test Permissions:** Use the RBAC testing interface extensively
-- **Follow Patterns:** Stick to the established patterns for consistency
-- **Document Changes:** Keep track of what you modify for easier integration
 
 ## 🔗 Related Documentation
 
