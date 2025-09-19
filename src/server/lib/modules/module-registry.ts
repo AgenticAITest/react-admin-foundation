@@ -1,10 +1,29 @@
 import { db } from '../db';
 import { tenant } from '../db/schema/system';
 import { eq, sql } from 'drizzle-orm';
+import postgres from 'postgres';
 import fs from 'fs/promises';
 import path from 'path';
 import { tenantDbManager } from '../db/tenant-db';
 import { routeRegistry } from './route-registry';
+
+async function upsertSysPlugin(meta: { id: string; version: string; api: string }) {
+  // Access the underlying postgres client for proper parameterized queries
+  const client = postgres(process.env.DATABASE_URL!);
+  
+  try {
+    await client`
+      insert into sys_plugins(plugin_id, api_version, version_installed)
+      values (${meta.id}, ${meta.api}, ${meta.version})
+      on conflict (plugin_id) do update set
+        api_version = excluded.api_version,
+        version_installed = excluded.version_installed,
+        updated_at = now()
+    `;
+  } finally {
+    await client.end();
+  }
+}
 
 export interface ModuleConfig {
   id: string;
@@ -113,6 +132,10 @@ export class ModuleRegistry {
     
     // Check dependencies
     await this.validateDependencies(config);
+    
+    // 1) (T09) check API compatibility
+    // 2) then upsert:
+    await upsertSysPlugin({ id: config.id, version: config.version, api: '1.x' });
     
     // Register API routes
     await this.registerRoutes(config);
