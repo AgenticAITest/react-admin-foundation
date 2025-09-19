@@ -8,10 +8,10 @@ const AuthContext = createContext({
     username: 'dev',
     roles: ['OWNER'],
     permissions: [
-      '<module-id>.items.read',
-      '<module-id>.items.create', 
-      '<module-id>.items.update',
-      '<module-id>.items.delete'
+      'sample.items.read',
+      'sample.items.create', 
+      'sample.items.update',
+      'sample.items.delete'
     ]
   }
 });
@@ -42,14 +42,14 @@ function Sidebar({ currentSection, setCurrentSection }: { currentSection: string
   
   const navItems = [
     { id: 'dashboard', title: 'Dashboard', icon: '📊', section: 'dashboard' },
-    { id: 'items', title: 'Items', icon: '📦', section: 'items', permissions: '<module-id>.items.read' },
+    { id: 'items', title: 'Items', icon: '📦', section: 'items', permissions: 'sample.items.read' },
     { id: 'permissions', title: 'Permissions', icon: '🔐', section: 'permissions' },
   ];
   
   return (
     <div className="sidebar">
       <div className="sidebar-header">
-        <h2>📦 &lt;module-id&gt; Sandbox</h2>
+        <h2>📦 Sample Sandbox</h2>
       </div>
       
       <nav className="sidebar-nav">
@@ -106,7 +106,7 @@ function DashboardSection() {
       .catch(() => {});
       
     // Check API health
-    fetch('/api/plugins/<module-id>/health')
+    fetch('/api/plugins/sample/health')
       .then(r => r.json())
       .then(() => setStats(prev => ({ ...prev, apiHealth: 'Healthy' })))
       .catch(() => setStats(prev => ({ ...prev, apiHealth: 'Error' })));
@@ -148,7 +148,7 @@ function DashboardSection() {
           <div className="stat-icon">🔗</div>
           <div className="stat-content">
             <h3>
-              <a href="/api/plugins/<module-id>/health" target="_blank" rel="noopener noreferrer">
+              <a href="/api/plugins/sample/health" target="_blank" rel="noopener noreferrer">
                 {stats.apiHealth}
               </a>
             </h3>
@@ -168,7 +168,7 @@ function ItemsSection() {
   
   const loadItems = async () => {
     try {
-      const r = await fetch('/api/plugins/<module-id>/items');
+      const r = await fetch('/api/plugins/sample/items');
       const data = await r.json();
       setItems(Array.isArray(data) ? data : []);
     } catch (error) {
@@ -182,7 +182,7 @@ function ItemsSection() {
     
     setLoading(true);
     try {
-      await fetch('/api/plugins/<module-id>/items', {
+      await fetch('/api/plugins/sample/items', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name })
@@ -211,7 +211,7 @@ function ItemsSection() {
           <p>Create a new item (requires create permission)</p>
         </div>
         <div className="card-content">
-          <Authorized permissions="<module-id>.items.create">
+          <Authorized permissions="sample.items.create">
             <div className="form-group">
               <input
                 type="text"
@@ -299,21 +299,21 @@ function PermissionsSection() {
           <div className="rbac-tests">
             <div className="test-case">
               <h4>Items Create Permission:</h4>
-              <Authorized permissions="<module-id>.items.create">
+              <Authorized permissions="sample.items.create">
                 <span className="test-result success">✓ Add Item Button Visible</span>
               </Authorized>
             </div>
             
             <div className="test-case">
               <h4>Items Read Permission:</h4>
-              <Authorized permissions="<module-id>.items.read">
+              <Authorized permissions="sample.items.read">
                 <span className="test-result success">✓ Items List Visible</span>
               </Authorized>
             </div>
             
             <div className="test-case">
               <h4>Non-existent Permission:</h4>
-              <Authorized permissions="<module-id>.admin">
+              <Authorized permissions="sample.admin">
                 <span className="test-result error">❌ Should Not See This</span>
               </Authorized>
               <span className="test-result success">✓ Hidden (as expected)</span>
@@ -353,10 +353,10 @@ function App() {
           username: 'dev',
           roles: ['OWNER'], 
           permissions: [
-            '<module-id>.items.read',
-            '<module-id>.items.create',
-            '<module-id>.items.update', 
-            '<module-id>.items.delete'
+            'sample.items.read',
+            'sample.items.create',
+            'sample.items.update', 
+            'sample.items.delete'
           ]
         }
       }}>
