@@ -75,7 +75,7 @@ async function main() {
   app.use(prefix, pre, ctx.router);
   console.log('🛣️ Routes mounted at:', prefix);
 
-  const port = Number(process.env.PORT || 5173);
+  const port = Number(process.env.PORT || 8787);
   console.log('🚀 Starting server on port:', port);
   
   const server = app.listen(port, '0.0.0.0', () => {

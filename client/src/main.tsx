@@ -100,7 +100,7 @@ function DashboardSection() {
   
   useEffect(() => {
     // Load items count
-    fetch('/api/plugins/<module-id>/items')
+    fetch('/api/plugins/sample/items')
       .then(r => r.json())
       .then(items => setStats(prev => ({ ...prev, totalItems: items.length })))
       .catch(() => {});
