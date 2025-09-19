@@ -4,6 +4,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import postgres from 'postgres';
 import crypto from 'crypto';
+import { authenticated } from '../../middleware/authMiddleware';
 
 export interface RouteInfo {
   moduleId: string;
@@ -136,17 +137,19 @@ export class RouteRegistry {
       next();
     };
 
-    // Mount in correct order: health pre-router → logger → gate → plugin router
-    this.app.use(prefix, pre);       // health stays open
-    this.app.use(prefix, logger);    // logging for observability
-    this.app.use(prefix, gate);      // gate guards everything else
-    this.app.use(prefix, router);    // actual routes
+    // Mount in correct order: health pre-router → authenticated → logger → gate → plugin router
+    this.app.use(prefix, pre);            // health stays open
+    this.app.use(prefix, authenticated()); // verify JWT and set req.user
+    this.app.use(prefix, logger);         // logging for observability (after auth)
+    this.app.use(prefix, gate);           // gate now has tenant context
+    this.app.use(prefix, router);         // actual routes
 
     // OPTIONAL (temporary): keep legacy mount for transition, then remove later
     const legacy = config.apiRoutes.prefix;
     if (legacy && legacy !== prefix) {
-      this.app.use(legacy, logger);  // log the legacy routes too
-      this.app.use(legacy, gate);    // gate the legacy routes too
+      this.app.use(legacy, authenticated()); // verify JWT for legacy too
+      this.app.use(legacy, logger);         // log the legacy routes too
+      this.app.use(legacy, gate);           // gate the legacy routes too
       this.app.use(legacy, router);
     }
 
