@@ -43,15 +43,13 @@ async function main() {
   await plugin.register(ctx as any);
   console.log('✅ Plugin registered successfully');
 
-  // Seed declared permissions (or a sane default set)
-  const perms = Array.isArray(pluginPermissions) && pluginPermissions.length
-    ? pluginPermissions
-    : [
-        `${MODULE_ID}.items.read`,
-        `${MODULE_ID}.items.create`,
-        `${MODULE_ID}.items.update`,
-        `${MODULE_ID}.items.delete`,
-      ];
+  // Seed declared permissions from plugin
+  const perms = plugin.permissions || [
+    `${MODULE_ID}.items.read`,
+    `${MODULE_ID}.items.create`,
+    `${MODULE_ID}.items.update`,
+    `${MODULE_ID}.items.delete`,
+  ];
   
   console.log('🔐 Seeding permissions:', perms);
   try {
