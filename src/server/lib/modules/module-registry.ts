@@ -127,13 +127,17 @@ export class ModuleRegistry {
   }
 
   async registerModule(config: ModuleConfig) {
+    // 1) (T09) API compatibility check - BEFORE everything else
+    if ((config as any).api && (config as any).api !== '1.x') {
+      throw new Error(`Incompatible plugin API: ${(config as any).api}`);
+    }
+    
     // Validate module configuration
     await this.validateModule(config);
     
     // Check dependencies
     await this.validateDependencies(config);
     
-    // 1) (T09) check API compatibility
     // 2) then upsert:
     await upsertSysPlugin({ id: config.id, version: config.version, api: '1.x' });
     
