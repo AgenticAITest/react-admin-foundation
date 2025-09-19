@@ -1,0 +1,161 @@
+Looks good overall—clean separation and easy to reason about. To make it turnkey and fully consistent with the foundation/sandbox contract, I’d apply the tweaks below. I’ve kept them short + actionable.
+
+What to keep (nice!)
+
+Folder split: sandbox/ infra, server/ plugin, client/ UI, db/ infra.
+
+Including withTenantTx, rbac, bootstrap is perfect.
+
+Separate repo flow (GitHub → Replit) aligns with your goal. 
+
+module-sandbox-setup
+
+Fix before you proceed (blocking / high-impact)
+
+Pick one DB driver (use pg with Drizzle).
+Remove "postgres" (Postgres.js) from deps to avoid driver mismatch. Keep:
+
+"pg" and drizzle-orm (use drizzle-orm/node-postgres)
+
+Your code samples should call pool.query and drizzle(pool)
+
+Add the missing runtime files (otherwise the app won’t run):
+
+server/index.ts — the plugin (default export { meta, register } + export const permissions = [...])
+
+vite.config.ts — Vite proxy to API
+
+tsconfig.json — basic TS settings
+
+.env.example — DATABASE_URL, DEV_TENANT_SCHEMA=tenant_dev, DEV_TENANT_CODE=dev, PORT=8787
+
+.gitignore
+
+Align the plugin contract (to match the foundation):
+
+Export default plugin with meta: { id, version, api:'1.x' } and async register(ctx)
+
+Also export const permissions = [...]
+
+ctx.log is a function, not ctx.log.error object
+
+Use req.auth.tenant_id (not req.user.activeTenantId)—the sandbox sets this
+
+Schema-per-tenant rule:
+Don’t put tenantId columns inside tenant schema tables (e.g., items). The isolation is done by search_path. Keep tenantId only if you store data in public schema (you aren’t).
+
+Drizzle migrations vs bootstrap:
+You listed drizzle-kit push scripts, but schema-per-tenant creation is dynamic. Keep bootstrap.ts as the source of truth for:
+
+public.sys_tenant
+
+create schema if not exists "<tenant_schema>"
+
+tenant tables + RBAC tables
+Drizzle Kit is fine for types and local dev, but don’t rely on it for creating per-tenant schemas.
+
+Add the React plugin for Vite.
+Include @vitejs/plugin-react in devDependencies and enable it in vite.config.ts.
+
+RBAC seeding is required at startup.
+Call seedPermissions(devTenantId, plugin.permissions) in sandbox/server.ts. (Your doc mentions RBAC testing UI; for now it’s only backend checks.)
+
+“Golden” snippets to drop in
+server/index.ts (plugin)
+import type { Request, Response } from 'express';
+
+type PluginContext = {
+  router: import('express').Router;
+  rbac: { require: (perm: string) => import('express').RequestHandler };
+  withTenantTx: <T>(tenantId: string, run: (db: any) => Promise<T>) => Promise<T>;
+  log: (msg: string, meta?: object) => void;
+};
+
+const MODULE_ID = 'sample';
+
+export const permissions = [
+  `${MODULE_ID}.items.read`,
+  `${MODULE_ID}.items.create`,
+  `${MODULE_ID}.items.update`,
+  `${MODULE_ID}.items.delete`,
+];
+
+const plugin = {
+  meta: { id: MODULE_ID, version: '0.1.0', api: '1.x' },
+
+  async register(ctx: PluginContext) {
+    ctx.router.get('/health', (_req: Request, res: Response) => {
+      res.json({ ok: true, plugin: MODULE_ID });
+    });
+
+    ctx.router.get('/items', ctx.rbac.require(`${MODULE_ID}.items.read`), async (req: any, res: Response) => {
+      const rows = await ctx.withTenantTx(req.auth?.tenant_id, async (db) => {
+        const r = await db.execute('select id, name, created_at from items order by created_at desc');
+        return (r as any).rows ?? r;
+      });
+      res.json(rows);
+    });
+
+    ctx.router.post('/items', ctx.rbac.require(`${MODULE_ID}.items.create`), async (req: any, res: Response) => {
+      const { name } = req.body ?? {};
+      if (!name || !String(name).trim()) return res.status(400).json({ error: 'NAME_REQUIRED' });
+      const row = await ctx.withTenantTx(req.auth?.tenant_id, async (db) => {
+        const r = await db.execute('insert into items (name) values ($1) returning id, name, created_at', [name]);
+        return ((r as any).rows ?? r)[0];
+      });
+      res.status(201).json(row);
+    });
+
+    ctx.log('registered');
+  },
+};
+
+export default plugin;
+
+vite.config.ts
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    port: 5173,
+    proxy: { '/api': { target: 'http://localhost:8787', changeOrigin: true } }
+  },
+});
+
+package.json (scripts + deps sanity)
+
+Add:
+
+"dev:api": "tsx sandbox/server.ts"
+
+"dev:web": "vite --port 5173"
+
+"dev": "concurrently -k -n api,web -c blue,green \\"npm:dev:api\\" \\"npm:dev:web\\""
+
+Dependencies:
+
+Keep: "pg", "drizzle-orm", "express", "react", "react-dom"
+
+Remove: "postgres" (unless you switch to Drizzle’s postgres-js driver everywhere)
+
+DevDeps: add @vitejs/plugin-react, concurrently, @types/express, @types/node, tsx, typescript, vite
+
+.env.example
+DATABASE_URL=postgres://user:pass@host/db
+DEV_TENANT_SCHEMA=tenant_dev
+DEV_TENANT_CODE=dev
+PORT=8787
+
+Sanity checklist (5 minutes)
+
+GET /api/plugins/sample/health → 200 { ok: true }
+
+First run created: public.sys_tenant, tenant_dev schema, items, and RBAC tables
+
+GET /api/plugins/sample/items → 200 (permissions seeded for user dev)
+
+React page loads and can add/list items
+
+No tenantId column inside tenant schema tables
