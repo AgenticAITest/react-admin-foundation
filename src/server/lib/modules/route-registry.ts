@@ -3,6 +3,7 @@ import { ModuleConfig } from './module-registry';
 import fs from 'fs/promises';
 import path from 'path';
 import postgres from 'postgres';
+import crypto from 'crypto';
 
 export interface RouteInfo {
   moduleId: string;
@@ -104,14 +105,47 @@ export class RouteRegistry {
       }
     };
 
-    // Mount in correct order: health pre-router → gate → plugin router
+    // Logging middleware - captures all plugin requests with timing and context
+    const logger = (req: any, res: any, next: any) => {
+      const start = Date.now();
+
+      // ensure a request id
+      const reqId = req.headers['x-request-id'] || crypto.randomUUID();
+      res.setHeader('x-request-id', String(reqId));
+
+      // pick up IDs set by T04 gate
+      const pluginId = config.id;
+      const tenantId = (req as any).tenantId || (req as any).user?.activeTenantId || 'unknown';
+
+      // log on response finish (captures status & duration)
+      res.on('finish', () => {
+        console.log(JSON.stringify({
+          level: 'info',
+          at: 'plugin',
+          ts: new Date().toISOString(),
+          requestId: reqId,
+          pluginId,
+          tenantId,
+          method: req.method,
+          path: req.path,
+          status: res.statusCode,
+          duration_ms: Date.now() - start
+        }));
+      });
+
+      next();
+    };
+
+    // Mount in correct order: health pre-router → logger → gate → plugin router
     this.app.use(prefix, pre);       // health stays open
+    this.app.use(prefix, logger);    // logging for observability
     this.app.use(prefix, gate);      // gate guards everything else
     this.app.use(prefix, router);    // actual routes
 
     // OPTIONAL (temporary): keep legacy mount for transition, then remove later
     const legacy = config.apiRoutes.prefix;
     if (legacy && legacy !== prefix) {
+      this.app.use(legacy, logger);  // log the legacy routes too
       this.app.use(legacy, gate);    // gate the legacy routes too
       this.app.use(legacy, router);
     }
