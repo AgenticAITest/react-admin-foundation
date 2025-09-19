@@ -1,5 +1,6 @@
 // sandbox/rbac.ts
 import { withTenantTx } from './withTenantTx';
+import { sql } from 'drizzle-orm';
 
 /** Express middleware factory */
 export function requirePerm(permission: string) {
@@ -9,14 +10,13 @@ export function requirePerm(permission: string) {
     if (!tenantId) return res.status(401).json({ error: 'NO_TENANT' });
     try {
       const granted = await withTenantTx(tenantId, async (db: any) => {
-        const r = await db.execute(
-          `select 1
-             from rbac_user_roles ur
-             join rbac_role_permissions rp on rp.role_code = ur.role_code
-            where ur.user_id = $1 and rp.permission_code = $2
-            limit 1`,
-          [userId, permission]
-        );
+        const r = await db.execute(sql`
+          select 1
+          from rbac_user_roles ur
+          join rbac_role_permissions rp on rp.role_code = ur.role_code
+          where ur.user_id = ${userId} and rp.permission_code = ${permission}
+          limit 1
+        `);
         const rows = (r as any).rows ?? r;
         return !!rows?.[0];
       });
@@ -36,16 +36,24 @@ export async function seedPermissions(
   const userId = opts?.userId ?? 'dev';
   await withTenantTx(tenantId, async (db: any) => {
     // Ensure role & user-role
-    await db.execute(`insert into rbac_roles(role_code, name) values ($1,$1) on conflict do nothing`, [roleCode]);
-    await db.execute(`insert into rbac_user_roles(user_id, role_code) values ($1,$2) on conflict do nothing`, [userId, roleCode]);
+    await db.execute(sql`
+      insert into rbac_roles(role_code, name) values (${roleCode}, ${roleCode}) 
+      on conflict do nothing
+    `);
+    await db.execute(sql`
+      insert into rbac_user_roles(user_id, role_code) values (${userId}, ${roleCode}) 
+      on conflict do nothing
+    `);
 
     for (const p of permissions) {
-      await db.execute(`
-        insert into rbac_permissions(permission_code, description)
-        values ($1, $1) on conflict do nothing`, [p]);
-      await db.execute(`
-        insert into rbac_role_permissions(role_code, permission_code)
-        values ($1, $2) on conflict do nothing`, [roleCode, p]);
+      await db.execute(sql`
+        insert into rbac_permissions(permission_code, description) values (${p}, ${p}) 
+        on conflict do nothing
+      `);
+      await db.execute(sql`
+        insert into rbac_role_permissions(role_code, permission_code) values (${roleCode}, ${p}) 
+        on conflict do nothing
+      `);
     }
   });
 }
