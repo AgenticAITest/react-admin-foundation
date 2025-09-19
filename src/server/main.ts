@@ -15,6 +15,7 @@ import fileUpload from "express-fileupload";
 import { routeRegistry } from "./lib/modules/route-registry";
 import { moduleRegistry } from "./lib/modules/module-registry";
 import { tenantDbManager } from "./lib/db/tenant-db";
+import { ensurePluginRegistryTables } from "./lib/db/ensure-plugin-registry";
 
 
 const app = express();
@@ -97,6 +98,9 @@ app.use('/api/master', masterRoutes);
 // Initialize module system
 async function initializeModuleSystem() {
   try {
+    // Ensure plugin registry tables exist
+    await ensurePluginRegistryTables();
+    
     // STARTUP VALIDATION: Ensure all tenant schemas exist before initializing modules
     await tenantDbManager.validateAllTenantSchemasOnStartup();
     
