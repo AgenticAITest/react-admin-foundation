@@ -1,0 +1,117 @@
+Preconditions
+
+You’ve got at least one module (e.g. inventory, tasks) registered.
+
+Admin API from T05 is live under /api/system/*.
+
+T03/T04/T06 are in place (namespace, gate, logging).
+
+Pick your test subject
+
+Use one module for the matrix (example uses inventory):
+
+Plugin ID: inventory
+
+Protected route to hit: /api/plugins/inventory/products
+
+Health route: /api/plugins/inventory/health (always 200)
+
+If products isn’t present, swap in any read endpoint you know exists (e.g. /items for another module).
+
+Get a valid tenant + token
+
+Tenant ID: grab an existing tenant UUID from your public table (or your Admin UI).
+
+Token: log in as a tenant user (e.g. admin@techcorp.com) and copy the Bearer token.
+
+Make sure your JWT contains a tenant_id claim (or your middleware maps the user to activeTenantId).
+
+Without a tenant, protected routes will 401/403 (that’s expected).
+
+Sanity check (health is always open)
+curl -i https://<host>/api/plugins/inventory/health
+# Expect: 200 {"ok":true,"plugin":"inventory"}
+
+Matrix (4 scenarios)
+A) Global OFF, Tenant ON → expect 403 PLUGIN_GLOBALLY_DISABLED
+# 1) Global OFF
+curl -X PUT https://<host>/api/system/plugins/inventory/global \
+  -H "Authorization: Bearer <ADMIN_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"enabled_global": false}'
+
+# 2) Tenant ON
+curl -X PUT https://<host>/api/system/tenants/<TENANT_ID>/plugins/inventory \
+  -H "Authorization: Bearer <ADMIN_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": true}'
+
+# 3) Call protected route as tenant user
+curl -i https://<host>/api/plugins/inventory/products \
+  -H "Authorization: Bearer <TENANT_USER_TOKEN>"
+# Expect: 403 {"error":"PLUGIN_GLOBALLY_DISABLED"} + header X-Plugin-Denied: global-off
+
+B) Global ON, Tenant MISSING (no row) → expect 403 PLUGIN_DISABLED
+# 1) Global ON
+curl -X PUT https://<host>/api/system/plugins/inventory/global \
+  -H "Authorization: Bearer <ADMIN_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"enabled_global": true}'
+
+# 2) Remove tenant row (or ensure it does not exist)
+# You can do this via SQL or by PUT-ing enabled:false then deleting; simplest is to not create it at all.
+
+# 3) Call protected route as tenant user
+curl -i https://<host>/api/plugins/inventory/products \
+  -H "Authorization: Bearer <TENANT_USER_TOKEN>"
+# Expect: 403 {"error":"PLUGIN_DISABLED"} + header X-Plugin-Denied: tenant-off
+
+C) Global ON, Tenant OFF → expect 403 PLUGIN_DISABLED
+curl -X PUT https://<host>/api/system/tenants/<TENANT_ID>/plugins/inventory \
+  -H "Authorization: Bearer <ADMIN_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": false}'
+
+curl -i https://<host>/api/plugins/inventory/products \
+  -H "Authorization: Bearer <TENANT_USER_TOKEN>"
+# Expect: 403 {"error":"PLUGIN_DISABLED"} + header X-Plugin-Denied: tenant-off
+
+D) Global ON, Tenant ON → expect success (200/OK for a real route)
+curl -X PUT https://<host>/api/system/tenants/<TENANT_ID>/plugins/inventory \
+  -H "Authorization: Bearer <ADMIN_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": true}'
+
+curl -i https://<host>/api/plugins/inventory/products \
+  -H "Authorization: Bearer <TENANT_USER_TOKEN>"
+# Expect: 200 (or your route’s normal success code/payload)
+
+What to watch in logs (from T06)
+
+Each call emits one JSON line with { pluginId, tenantId, status, duration_ms, requestId }.
+
+403 variants should include X-Plugin-Denied: global-off or tenant-off.
+
+Health calls should not be logged (or are logged separately if you chose to).
+
+Legacy path (only if you kept it during transition)
+
+Hitting the legacy route (e.g. /api/inventory/products) should mirror the same 200/403 results as the namespaced path.
+
+If not, make sure the gate also fronts the legacy mount (or remove the legacy mount entirely).
+
+Done when
+
+All 4 matrix outcomes match expectations.
+
+A normal protected request under /api/plugins/<id>/* works when both toggles are ON.
+
+Health remains 200 under all states.
+
+Common gotchas
+
+401 Unauthorized: usually a missing/expired Bearer token.
+
+Tenant still “unknown”: your JWT doesn’t carry tenant_id (or the middleware isn’t setting activeTenantId). Fix your auth mapping.
+
+404 on the protected route: double-check the path; use a known GET that exists in that plugin.
