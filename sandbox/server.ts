@@ -44,7 +44,7 @@ async function main() {
   console.log('✅ Plugin registered successfully');
 
   // Seed declared permissions from plugin
-  const perms = plugin.permissions || [
+  const perms = pluginPermissions || [
     `${MODULE_ID}.items.read`,
     `${MODULE_ID}.items.create`,
     `${MODULE_ID}.items.update`,

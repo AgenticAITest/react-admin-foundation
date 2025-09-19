@@ -79,22 +79,22 @@ Create `package.json` with sandbox-specific dependencies:
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "@types/express": "^4.17.21",
-    "@types/node": "^20.10.0",
-    "cors": "^2.8.5",
-    "drizzle-orm": "^0.29.0",
-    "express": "^4.18.2",
-    "pg": "^8.11.3",
-    "postgres": "^3.4.3",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "tsx": "^4.6.0",
-    "typescript": "^5.3.0",
-    "vite": "^5.0.0"
+    "@types/express": "^5.0.1",
+    "@types/node": "^22.15.2",
+    "drizzle-orm": "^0.44.4",
+    "express": "^5.1.0",
+    "pg": "^8.16.3",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.3",
+    "concurrently": "^9.1.0"
   },
   "devDependencies": {
-    "@types/pg": "^8.10.9",
-    "drizzle-kit": "^0.20.4"
+    "@types/pg": "^8.15.5",
+    "@vitejs/plugin-react": "^4.4.1",
+    "drizzle-kit": "^0.31.4"
   }
 }
 ```
@@ -175,12 +175,11 @@ From your current foundation project:
 
 2. **Customize Database Schema:**
    ```typescript
-   // In shared/schema.ts - add your module tables
+   // In shared/schema.ts - add your module tables (NO tenantId needed)
    export const inventory = pgTable('inventory', {
      id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
      name: varchar("name", { length: 255 }).notNull(),
      quantity: integer("quantity").default(0),
-     tenantId: varchar("tenant_id").notNull(),
      createdAt: timestamp("created_at").defaultNow(),
    });
    ```
@@ -200,12 +199,12 @@ From your current foundation project:
 
 1. **Start Development Servers:**
    ```bash
-   # Option 1: Start both servers together
-   npm run dev:full
+   # Start both servers together (recommended)
+   npm run dev
    
-   # Option 2: Start separately in two terminals
-   npm run sandbox:dev  # API server on port 8787
-   npm run dev         # Vite dev server on port 5173
+   # Or start separately in two terminals
+   npm run dev:api     # API server on port 8787
+   npm run dev:web     # Vite dev server on port 5173
    ```
 
 2. **Access Development Interface:**
@@ -305,30 +304,45 @@ export const register = (ctx: PluginContext) => {
 
 **Database Schema (shared/schema.ts):**
 ```typescript
+// Schema-per-tenant: NO tenantId column needed - isolation via search_path
 export const yourModuleTable = pgTable('your_module', {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  // Add your specific fields
-  tenantId: varchar("tenant_id").notNull(), // Always include for isolation
+  name: varchar("name", { length: 255 }).notNull(),
+  // Add your specific fields here
   createdAt: timestamp("created_at").defaultNow(),
 });
 ```
 
 **Plugin Implementation (server/index.ts):**
 ```typescript
-export const register = (ctx: PluginContext) => {
-  // CRUD endpoints with proper dependency injection
-  ctx.router.get('/items', ctx.rbac.require('your-module.items.read'), async (req, res) => {
-    try {
-      const result = await ctx.withTenantTx(req.user.activeTenantId, async (tx) => {
-        return await tx.select().from(yourModuleTable);
+const plugin = {
+  meta: { id: 'your-module', version: '0.1.0', api: '1.x' },
+  
+  async register(ctx: PluginContext) {
+    // CRUD endpoints with proper dependency injection
+    ctx.router.get('/items', ctx.rbac.require('your-module.items.read'), async (req: any, res) => {
+      const rows = await ctx.withTenantTx(req.auth?.tenant_id, async (db) => {
+        const r = await db.execute('select id, name, created_at from items order by created_at desc');
+        return (r as any).rows ?? r;
       });
-      res.json(result);
-    } catch (error) {
-      ctx.log.error('Error fetching items:', error);
-      res.status(500).json({ error: 'Failed to fetch items' });
-    }
-  });
+      res.json(rows);
+    });
+    
+    ctx.router.post('/items', ctx.rbac.require('your-module.items.create'), async (req: any, res) => {
+      const { name } = req.body ?? {};
+      if (!name || !String(name).trim()) return res.status(400).json({ error: 'NAME_REQUIRED' });
+      const row = await ctx.withTenantTx(req.auth?.tenant_id, async (db) => {
+        const r = await db.execute('insert into items (name) values ($1) returning id, name, created_at', [name]);
+        return ((r as any).rows ?? r)[0];
+      });
+      res.status(201).json(row);
+    });
+    
+    ctx.log('registered');
+  },
 };
+
+export default plugin;
 ```
 
 **UI Components (client/src/main.tsx):**
@@ -342,12 +356,13 @@ export const register = (ctx: PluginContext) => {
 
 ### Development Guidelines
 
-1. **Always Use Tenant Isolation:**
+1. **Schema-per-Tenant Isolation:**
    ```typescript
-   // Always filter by tenant in database queries
-   const items = await db.select()
-     .from(yourTable)
-     .where(eq(yourTable.tenantId, req.user.activeTenantId));
+   // NO manual tenant filtering needed - isolation via search_path
+   const items = await ctx.withTenantTx(req.auth?.tenant_id, async (db) => {
+     const r = await db.execute('select * from your_table order by created_at desc');
+     return (r as any).rows ?? r;
+   });
    ```
 
 2. **Implement Proper RBAC:**
@@ -388,45 +403,52 @@ export const register = (ctx: PluginContext) => {
 
 ## 🚨 Common Issues and Solutions
 
-### Database Connection Issues
+### Database Driver Conflicts
 
-**Problem:** `DATABASE_URL` not found
-**Solution:** Ensure environment variable is set in Replit secrets
+**Problem:** "Cannot resolve module 'postgres'" or driver conflicts
+**Solution:** Use only `pg` with `drizzle-orm/node-postgres` - Remove `postgres` (Postgres.js) from dependencies
 
-### Permission Errors
+### Schema-per-Tenant Errors
 
-**Problem:** UI elements not showing/hiding correctly
-**Solution:** Check permission strings match exactly in both backend and frontend
+**Problem:** "tenantId column not found" in tenant schema tables
+**Solution:** Remove `tenantId` columns from tables in tenant schemas - isolation is done by `search_path`
 
-### Module Integration Issues
+### Plugin Contract Mismatches
 
-**Problem:** Module doesn't work when copied to foundation
-**Solution:** Ensure all dependencies are included and paths are updated
+**Problem:** Plugin not registering or imports failing
+**Solution:** Ensure `export default plugin` with `meta: { id, version, api: '1.x' }` and `export const permissions`
 
-### RBAC Testing Issues
+### Development Server Issues
 
-**Problem:** Permissions not working as expected
-**Solution:** Verify user has correct role and permissions are seeded properly
+**Problem:** Vite proxy not routing API calls
+**Solution:** Verify API server runs on port 8787 and Vite proxies `/api` correctly
 
-## 📚 Next Steps
+### Permission Seeding Failures
 
-After setting up your module sandbox:
+**Problem:** RBAC permissions not working
+**Solution:** Check `plugin.permissions` export and `seedPermissions()` call in sandbox/server.ts
 
-1. **Start with Simple CRUD:** Create basic Create, Read, Update, Delete operations
-2. **Add Business Logic:** Implement your specific business requirements
-3. **Test RBAC Thoroughly:** Ensure proper access control at all levels
-4. **Polish the UI:** Make it consistent with the main application
-5. **Document Your Module:** Create usage and integration documentation
-6. **Integrate to Foundation:** Copy your working module back to the main system
+## 📚 Sanity Checklist
 
-## 💡 Tips for Success
+Before considering your sandbox complete, verify:
 
-- **Focus on the Plugin:** Your main work is in `server/index.ts` - the infrastructure is handled for you
-- **Use Dependency Injection:** Leverage `ctx.router`, `ctx.rbac`, `ctx.withTenantTx`, and `ctx.log` for clean code
-- **Test with Vite:** The hot-reload development experience makes testing fast and efficient
-- **Follow Clean Patterns:** Business logic stays in the plugin, infrastructure stays in sandbox
-- **Use the Dashboard:** The professional interface helps visualize and test your module
-- **Test Permissions:** Use the RBAC testing interface extensively
+1. **✅ Health Endpoint:** `GET /api/plugins/sample/health` → `200 { ok: true }`
+2. **✅ Bootstrap Success:** First run creates `public.sys_tenant`, `tenant_dev` schema, `items` table, and RBAC tables
+3. **✅ API Operations:** `GET /api/plugins/sample/items` → `200` (permissions seeded for user 'dev')
+4. **✅ React Integration:** Frontend loads and can add/list items via proxy
+5. **✅ Schema Compliance:** No `tenantId` columns inside tenant schema tables
+6. **✅ Plugin Contract:** Default export with `meta`, `register()`, and `permissions` export
+7. **✅ Development Flow:** Both servers start with `npm run dev`
+
+## 💡 Production-Ready Patterns
+
+- **Plugin Contract:** Always use `export default { meta, register }` + `export const permissions`
+- **Database Access:** Use `req.auth.tenant_id` and `ctx.withTenantTx()` for proper tenant isolation
+- **Error Handling:** Return structured errors (`{ error: 'CODE' }`) with proper HTTP status codes
+- **Schema Design:** No `tenantId` in tenant schema tables - isolation via `search_path`
+- **Permission Naming:** Use `module-id.resource.action` format (e.g., `inventory.items.read`)
+- **Development Flow:** Use `npm run dev` for concurrent API + web servers with hot reload
+- **Foundation Integration:** Copy `server/index.ts` directly to main application module structure
 
 ## 🔗 Related Documentation
 
