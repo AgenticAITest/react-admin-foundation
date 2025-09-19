@@ -29,7 +29,10 @@ export interface DecodedToken {
   // Add other properties from your JWT payload
 }
 
-const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET || 'my_access_token_secret_key'; // Use environment variable for production
+const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET; // JWT secret is required for security
+if (!ACCESS_TOKEN_SECRET) {
+  throw new Error('ACCESS_TOKEN_SECRET environment variable is required for security');
+}
 
 export const authenticated = () => async (req: Request, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization;
@@ -48,15 +51,24 @@ export const authenticated = () => async (req: Request, res: Response, next: Nex
     let currentUser: any = null;
 
     if (decoded.tenant_id && decoded.tenant_code) {
-      // Tenant user - lookup in tenant schema
+      // Tenant user - lookup in tenant schema using secure approach
       const { TenantDatabaseManager } = await import('src/server/lib/db/tenant-db');
       const manager = TenantDatabaseManager.getInstance();
+      
+      // Validate tenant_id and tenant_code match trusted registry
+      const tenantInfo = await manager.getTenant(decoded.tenant_id);
+      const expectedTenantCode = tenantInfo.code.toUpperCase();
+      if (decoded.tenant_code.toUpperCase() !== expectedTenantCode) {
+        console.error(`Security: Token tenant_code '${decoded.tenant_code}' does not match registry '${expectedTenantCode}' for tenant_id '${decoded.tenant_id}'`);
+        return res.status(401).json({ message: 'Invalid token.' });
+      }
+      
       const client = await manager.getTenantClient(decoded.tenant_id);
       
-      const schemaName = `tenant_${decoded.tenant_code.toLowerCase()}`;
+      // Use tenant client with search_path - no dynamic schema interpolation
       const results = await client.unsafe(`
         SELECT id, username, fullname, email, status 
-        FROM ${schemaName}.users 
+        FROM users 
         WHERE username = $1 AND status = 'active' 
         LIMIT 1
       `, [decoded.username]) as Array<{ id: string; username: string; fullname: string; email: string; status: 'active'|'inactive' }>;
@@ -220,7 +232,7 @@ const userHasRoles = async (username: string, roleCodes: string[], isSuperAdmin?
       
     return result[0]?.exists || false;
   } else {
-    // Tenant users - use raw postgres client
+    // Tenant users - use raw postgres client (search_path already set)
     if (!activeTenantId) {
       return false;
     }
@@ -275,7 +287,7 @@ const userHasPermissions = async (username: string, permissionCodes: string[], i
       
     return result[0]?.exists || false;
   } else {
-    // Tenant users - use raw postgres client
+    // Tenant users - use raw postgres client (search_path already set)
     if (!activeTenantId) {
       return false;
     }
