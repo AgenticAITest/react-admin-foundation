@@ -48,16 +48,29 @@ export class RouteRegistry {
     }
 
     const moduleId = config.id;
-    const prefix = config.apiRoutes.prefix;
+    // Compute the namespaced prefix for this plugin
+    const prefix = `/api/plugins/${config.id}`;
 
-    // Check for route conflicts
-    await this.validateRouteConflicts(config);
+    // Check for route conflicts (using new prefix)
+    const configWithNewPrefix = { ...config, apiRoutes: { ...config.apiRoutes, prefix } };
+    await this.validateRouteConflicts(configWithNewPrefix);
 
     // Load and mount the module router
     const router = await this.loadModuleRouter(moduleId);
     
-    // Register the routes with Express
+    // Small pre-router that is always present (no auth needed)
+    const pre = Router();
+    pre.get('/health', (_req, res) => res.json({ ok: true, plugin: config.id }));
+
+    // Mount the pre-router and the plugin router under the namespace
+    this.app.use(prefix, pre);
     this.app.use(prefix, router);
+
+    // OPTIONAL (temporary): keep legacy mount for transition, then remove later
+    const legacy = config.apiRoutes.prefix;
+    if (legacy && legacy !== prefix) {
+      this.app.use(legacy, router);
+    }
 
     // Track mounted routes
     const endpoints = this.extractEndpoints(config);
