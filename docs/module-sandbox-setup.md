@@ -72,9 +72,10 @@ Create `package.json` with sandbox-specific dependencies:
   "version": "1.0.0",
   "description": "Module development sandbox for React Admin Foundation",
   "scripts": {
-    "dev": "vite",
-    "sandbox:dev": "tsx sandbox/server.ts",
-    "dev:full": "concurrently \"npm run sandbox:dev\" \"npm run dev\"",
+    "dev:api": "tsx sandbox/server.ts",
+    "dev:web": "vite --port 5173",
+    "dev": "concurrently -k -n api,web -c blue,green \"npm:dev:api\" \"npm:dev:web\"",
+    "build": "vite build",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio"
   },
@@ -107,8 +108,9 @@ If you prefer to work outside Replit initially:
 
 From your current foundation project:
 1. Download the `sandbox/` folder
-2. Download the `client/` folder
-3. Download the `db/` folder (client.ts and schema.ts)
+2. Download the `client/` folder  
+3. Download the `shared/` folder (schema.ts)
+4. Download configuration files (vite.config.ts, tsconfig.json, .env.example)
 
 #### Step 2: Create GitHub Repository
 
@@ -187,12 +189,25 @@ From your current foundation project:
 3. **Implement Plugin Business Logic:**
    ```typescript
    // In server/index.ts - your pure plugin implementation
-   export const register = (ctx: PluginContext) => {
-     // Add your CRUD endpoints using ctx.router, ctx.rbac, ctx.withTenantTx
-     ctx.router.get('/items', ctx.rbac.require('inventory.items.read'), async (req, res) => {
-       // Your business logic here using ctx.withTenantTx
-     });
+   const plugin = {
+     meta: { id: 'inventory', version: '0.1.0', api: '1.x' },
+     
+     async register(ctx: PluginContext) {
+       // Add your CRUD endpoints using ctx.router, ctx.rbac, ctx.withTenantTx
+       ctx.router.get('/items', ctx.rbac.require('inventory.items.read'), async (req: any, res) => {
+         const rows = await ctx.withTenantTx(req.auth?.tenant_id, async (db) => {
+           const r = await db.execute('select * from items order by created_at desc');
+           return (r as any).rows ?? r;
+         });
+         res.json(rows);
+       });
+       
+       ctx.log('registered');
+     },
    };
+   
+   export const permissions = ['inventory.items.read', 'inventory.items.create'];
+   export default plugin;
    ```
 
 #### Phase 2: Develop Features
@@ -270,7 +285,7 @@ DATABASE_URL=postgresql://username:password@host:port/database
 
 # Sandbox Development Settings
 DEV_TENANT_CODE=dev
-DEV_TENANT_SCHEMA=main
+DEV_TENANT_SCHEMA=tenant_dev
 PORT=8787
 
 # Optional settings
