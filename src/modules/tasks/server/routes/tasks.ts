@@ -86,18 +86,12 @@ router.post("/task-managements",
   async (req, res) => {
     try {
       const { name, description } = req.body;
-      const tenantId = req.user?.activeTenantId;
-
-      if (!tenantId) {
-        return res.status(400).json({ error: 'No active tenant' });
-      }
 
       const newItem = await req.db!
         .insert(taskManagements)
         .values({
           name,
           description,
-          tenantId,
         })
         .returning();
 
