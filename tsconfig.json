@@ -21,5 +21,5 @@
       ]
     }
   },
-  "include": ["client/src", "server", "sandbox", "shared"]
+  "include": ["client/src", "server", "sandbox", "shared", "db"]
 }
