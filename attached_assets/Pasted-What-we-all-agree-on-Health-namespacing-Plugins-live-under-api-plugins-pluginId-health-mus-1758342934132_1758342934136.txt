@@ -1,0 +1,131 @@
+What we all agree on
+
+Health & namespacing: Plugins live under /api/plugins/:pluginId/*; /health must be open. 
+
+project_handoff
+
+ 
+
+module-sandbox-setup
+
+Bootstrap expectation: First run creates public.sys_tenant, tenant schema (e.g., tenant_dev) and initial tables/RBAC. 
+
+module-sandbox-setup
+
+ 
+
+module-sandbox-setup
+
+Plugin contract (authoring shape): export default { meta: {id, version, api:'1.x'}, async register(ctx) } + export const permissions. 
+
+project_handoff
+
+ 
+
+module-sandbox-setup
+
+Schema-per-tenant: No tenantId columns inside tenant schemas; isolation via search_path + withTenantTx(tenantId, run). 
+
+module-sandbox-setup
+
+ 
+
+module-sandbox-setup
+
+Clarified corrections (based on your architect’s feedback)
+
+db/client.ts: It already exists on the server side. Keep it owned by the foundation, not by modules. The sandbox may carry a dev-only DB client so it can run standalone; plugins themselves must not import a DB client directly—they receive withTenantTx from context. (Matches the docs’ “database access through ctx.withTenantTx”.) 
+
+module-sandbox-setup
+
+Tenancy model: The hybrid approach is fine: system tables may keep tenantId while module tables live in tenant schemas (no tenantId). The sandbox docs already emphasize the per-tenant schema rule for module data. 
+
+module-sandbox-setup
+
+ 
+
+module-sandbox-setup
+
+Gaps to fix (single, consolidated list)
+
+Sandbox bootstrap self-sufficiency
+Ensure public.sys_tenant + the dev tenant schema/tables are created on first run (as your checklist requires). 
+
+module-sandbox-setup
+
+ 
+
+module-sandbox-setup
+
+CORS in sandbox
+Add permissive CORS for Vite proxy so /api calls work during local dev. (Your setup assumes a dev flow with web+API concurrently.) 
+
+module-sandbox-setup
+
+tsconfig path
+Fix alias to @client/* → ./client/src/* so imports line up with the documented structure. (The structure in the handoff shows client/ with source under it.) 
+
+project_handoff
+
+Plugin contract adapter (one codebase, two runtimes)
+Adopt the adapter pattern so the same plugin code works in both environments:
+
+Authoring API (unchanged): keep register(ctx) inside server/index.ts (sandbox). 
+
+module-sandbox-setup
+
+Foundation wrapper: export a default Router that calls your register(ctx) under the hood (tiny file per module).
+
+This preserves the docs’ plugin authoring style while satisfying the foundation’s route-registry expectations.
+
+Who owns what (so there’s no confusion)
+
+Foundation owns: DB pool, withTenantTx, RBAC middleware, plugin discovery/route registry, and system tables. (Plugins receive these via ctx.) 
+
+project_handoff
+
+Module starter (sandbox) includes: the pure plugin (server/index.ts), optional shared/schema.ts for module tables, dev-only infrastructure (sandbox/*) to run locally; it mirrors the same contract/flow so code lifts cleanly back into the foundation. 
+
+module-sandbox-setup
+
+Actionable plan (tell your programmer)
+
+A. Sandbox repo (module starter)
+
+ Add/verify bootstrap creates public.sys_tenant + tenant_dev + initial tables/RBAC per the checklist. 
+
+module-sandbox-setup
+
+ Add CORS middleware to the sandbox API server (so Vite proxy calls succeed). 
+
+module-sandbox-setup
+
+ Fix tsconfig.json alias: @client/* → ./client/src/*. 
+
+project_handoff
+
+ Keep the plugin authoring shape (export default { meta, register }, export const permissions). 
+
+module-sandbox-setup
+
+B. Foundation repo
+
+ For each module, add a tiny router adapter that builds an Express Router, constructs ctx (router, withTenantTx, rbac.require, log), then calls plugin.register(ctx) and exports that Router as default.
+
+ Keep system tables with tenantId as designed; module tables remain schema-per-tenant (no tenantId). 
+
+module-sandbox-setup
+
+C. Exit criteria
+
+GET /api/plugins/<id>/health returns 200 in both sandbox and foundation. 
+
+module-sandbox-setup
+
+Protected routes 403 until permissions are seeded; 2xx when allowed. 
+
+project_handoff
+
+No tenantId columns in tenant schema tables; isolation via withTenantTx/search_path. 
+
+module-sandbox-setup
