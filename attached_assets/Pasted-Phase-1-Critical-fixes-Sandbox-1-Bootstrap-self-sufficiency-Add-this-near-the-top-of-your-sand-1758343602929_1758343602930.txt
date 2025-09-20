@@ -1,0 +1,199 @@
+Phase 1 — Critical fixes (Sandbox)
+1) Bootstrap self-sufficiency
+
+Add this near the top of your sandbox bootstrap.ts, before any upsert/seed that references public.sys_tenant or tenant schemas:
+
+// bootstrap.ts (early in main)
+import { pool } from './db/client';
+
+await pool.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto;`);
+
+await pool.query(`
+  CREATE TABLE IF NOT EXISTS public.sys_tenant (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    code        text UNIQUE NOT NULL,
+    name        text        NOT NULL,
+    domain      text,
+    schema_name text        NOT NULL
+  );
+`);
+
+
+If you also create a default dev tenant, keep it idempotent:
+
+await pool.query(`
+  DO $$
+  DECLARE
+    tgt_schema text := 'tenant_dev';
+  BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.schemata WHERE schema_name = tgt_schema) THEN
+      EXECUTE format('CREATE SCHEMA %I', tgt_schema);
+    END IF;
+  END $$;
+`);
+
+2) CORS for Vite proxy (dev-only)
+
+In sandbox/server.ts (or wherever you build the Express app):
+
+import cors from 'cors';
+
+if (process.env.NODE_ENV !== 'production') {
+  // Allows http://localhost:* frontends to call the sandbox API during dev
+  app.use(cors({ origin: true, credentials: true }));
+}
+
+
+(And add npm i cors to the template’s dev deps.)
+
+3) tsconfig path alias
+
+In the sandbox template’s tsconfig.json, fix the alias to match your actual tree:
+
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@client/*": ["./client/src/*"]
+    }
+  }
+}
+
+Phase 2 — Contract Adapter (one codebase, two runtimes)
+2.1 Module authoring stays the same (sandbox)
+
+Your business module continues to export the authoring API:
+
+// plugin/index.ts (module authoring — unchanged)
+export const permissions = [
+  'items.read', 'items.create', 'items.update', 'items.delete'
+] satisfies string[];
+
+const plugin = {
+  meta: { id: 'items', version: '1.0.0', api: '1.x' },
+  async register(ctx: {
+    router: import('express').Router,
+    rbac: { require: (perm: string) => any },
+    withTenantTx: <T>(tenantId: string, run: (db: any) => Promise<T>) => Promise<T>,
+    log: (msg: string, meta?: object) => void
+  }) {
+    const r = ctx.router;
+
+    r.get('/health', (_req, res) => res.json({ ok: true, plugin: 'items' }));
+
+    r.get('/items', ctx.rbac.require('items.read'), async (req, res) => {
+      const tenantId = req.headers['x-tenant-id'] as string; // or however you pass it
+      const data = await ctx.withTenantTx(tenantId, async (db) => {
+        // ... query module tables in tenant schema
+        return await db.execute(/* sql */`SELECT id, name FROM items ORDER BY created_at DESC`);
+      });
+      res.json({ data });
+    });
+
+    // ... other CRUD routes
+  },
+};
+
+export default plugin;
+
+2.2 Foundation router wrapper (adapter)
+
+Create this tiny adapter in the foundation repo under each module (so the foundation gets a default Router export while your authoring API stays register(ctx)):
+
+// foundation/src/modules/items/server/routes/index.ts
+import { Router } from 'express';
+import plugin, { permissions as pluginPermissions } from '../../plugin'; // path to your module authoring file
+import { withTenantTx } from '../../../lib/db/tenant-db';
+import { requirePermission } from '../../../lib/security/rbac'; // replace with your RBAC factory
+
+const router = Router();
+
+const ctx = {
+  router,
+  rbac: { require: (perm: string) => requirePermission(perm) },
+  withTenantTx,
+  log: (msg: string, meta?: object) =>
+    console.log(JSON.stringify({ at: 'plugin', plugin: plugin.meta?.id ?? 'items', msg, ...meta })),
+};
+
+await plugin.register(ctx);
+
+export const permissions = pluginPermissions;
+export default router;
+
+2.3 Minimal module.config.ts for discovery
+
+Also in the foundation repo:
+
+// foundation/src/modules/items/module.config.ts
+export default {
+  id: 'items',
+  name: 'Items',
+  version: '1.0.0',
+  api: '1.x',
+  permissions: [
+    'items.read', 'items.create', 'items.update', 'items.delete'
+  ],
+  nav: {
+    basePath: '/app/items',
+    items: [{ path: '/app/items/list', label: 'Items', permissions: ['items.read'] }]
+  }
+};
+
+Phase 3 — Foundation consistency (DDL fallback)
+
+If your ModuleRegistry emits fallback DDL for module tables, remove tenant_id from that fallback so it’s consistent with schema-per-tenant. Example diff (pseudocode):
+
+- CREATE TABLE IF NOT EXISTS items (
+-   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+-   tenant_id uuid NOT NULL,
+-   name text NOT NULL,
+-   created_at timestamp DEFAULT now() NOT NULL,
+-   updated_at timestamp DEFAULT now() NOT NULL
+- );
++ CREATE TABLE IF NOT EXISTS items (
++   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
++   name text NOT NULL,
++   created_at timestamp DEFAULT now() NOT NULL,
++   updated_at timestamp DEFAULT now() NOT NULL
++ );
+
+
+(Keep tenantId in system tables as you already do; modules’ tables live in per-tenant schemas with no tenantId column.)
+
+Tests & “Definition of Done”
+Smoke
+
+GET /api/plugins/<id>/health → 200 { ok:true } in both sandbox and foundation.
+
+GET /api/plugins/<id>/items without permission → 403.
+
+After seeding permissions/role → 200 with data.
+
+Tenancy
+
+Create two tenants (e.g., tenant_a, tenant_b) and insert different rows into each via withTenantTx.
+
+Cross-check /items returns only the correct tenant’s data when switching X-Tenant-Id (or your chosen mechanism).
+
+CORS (dev)
+
+Run Vite client + sandbox API; confirm browser can call /api/plugins/<id>/* without preflight errors.
+
+Idempotency
+
+Re-run bootstrap; no errors, no duplicate rows/schemas.
+
+Lint/Types
+
+No TypeScript path resolution errors after the alias change.
+
+Ownership & guardrails (so you don’t drift)
+
+Foundation owns: db/client.ts, withTenantTx, RBAC, route registry, system tables.
+
+Sandbox owns (dev-only): a local pool and withTenantTx that mirrors the foundation API, used only to run the template standalone.
+
+Module business code never imports a DB client directly; it always receives withTenantTx via ctx/adapter.
+
+If you follow the steps above, you’ll keep your hybrid tenancy model intact, preserve the authoring experience, and achieve the turnkey sandbox flow—all while keeping the foundation as the single source of truth for infra.

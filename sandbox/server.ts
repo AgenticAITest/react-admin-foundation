@@ -1,5 +1,6 @@
 // sandbox/server.ts
 import express from 'express';
+import cors from 'cors';
 import type { Router, RequestHandler } from 'express';
 import { bootstrap } from './bootstrap';
 import { withTenantTx } from './withTenantTx';
@@ -17,6 +18,12 @@ async function main() {
   console.log('🚀 Starting sandbox server...');
   
   const app = express();
+  
+  // Enable CORS for Vite proxy during development
+  if (process.env.NODE_ENV !== 'production') {
+    app.use(cors({ origin: true, credentials: true }));
+  }
+  
   app.use(express.json());
 
   console.log('📦 Running bootstrap...');
@@ -72,6 +79,12 @@ async function main() {
 
   app.use(prefix, pre, ctx.router);
   console.log('🛣️ Routes mounted at:', prefix);
+
+  // Error handler
+  app.use((err: any, _req: any, res: any, _next: any) => {
+    console.error('Server error:', err);
+    res.status(500).json({ error: 'INTERNAL_ERROR' });
+  });
 
   const port = Number(process.env.PORT || 8787);
   console.log('🚀 Starting server on port:', port);

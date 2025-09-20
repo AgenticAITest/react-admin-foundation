@@ -5,7 +5,18 @@ const DEV_TENANT_CODE = process.env.DEV_TENANT_CODE || 'dev';
 const DEV_TENANT_SCHEMA = process.env.DEV_TENANT_SCHEMA || 'tenant_dev';
 
 export async function bootstrap(): Promise<{ devTenantId: string }> {
-  await pool.query(`create extension if not exists pgcrypto;`);
+  await pool.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto;`);
+
+  // Ensure sys_tenant table exists before any operations
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS public.sys_tenant (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      code        text UNIQUE NOT NULL,
+      name        text        NOT NULL,
+      domain      text,
+      schema_name text        NOT NULL
+    );
+  `);
 
   // Work with existing sys_tenant table structure
   const upsertRes = await pool.query(
@@ -20,7 +31,17 @@ export async function bootstrap(): Promise<{ devTenantId: string }> {
   );
   const devTenantId = upsertRes.rows[0].id as string;
 
-  await pool.query(`create schema if not exists "${DEV_TENANT_SCHEMA}"`);
+  // Create tenant schema using safer idempotent approach
+  await pool.query(`
+    DO $$
+    DECLARE
+      tgt_schema text := '${DEV_TENANT_SCHEMA}';
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM information_schema.schemata WHERE schema_name = tgt_schema) THEN
+        EXECUTE format('CREATE SCHEMA %I', tgt_schema);
+      END IF;
+    END $$;
+  `);
 
   // Business sample table
   await pool.query(`
