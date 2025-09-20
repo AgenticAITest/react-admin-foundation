@@ -1,6 +1,6 @@
 
 import { Router } from 'express';
-import { asc, count, desc, eq, ilike } from 'drizzle-orm';
+import { asc, count, desc, eq, ilike, sql } from 'drizzle-orm';
 import { authenticated, authorized } from '../../../../server/middleware/authMiddleware';
 import { validateData } from '../../../../server/middleware/validationMiddleware';
 import { productSchema, productEditSchema } from '../schemas/productSchema';
@@ -27,25 +27,30 @@ router.get("/products",
 
     const filterCondition = filterParam
       ? ilike(products.name, `%${filterParam}%`)
-      : undefined;
+      : sql`true`;
 
-    let countQuery = req.db!
+    const countQuery = req.db!
       .select({ value: count() })
-      .from(products);
-    if (filterCondition) {
-      countQuery = countQuery.where(filterCondition);
-    }
+      .from(products)
+      .where(filterCondition);
     const [{ value: total }] = await countQuery;
 
     const validSortColumns = ['name', 'createdAt', 'updatedAt', 'id'] as const;
     const sortKey = validSortColumns.includes(sortParam as any) ? sortParam : 'name';
-    const sortColumn = products[sortKey as keyof typeof products];
-    let itemsQuery = req.db!
+    
+    // Typed sort column mapping
+    const sortColumns = {
+      name: products.name,
+      createdAt: products.createdAt,
+      updatedAt: products.updatedAt,
+      id: products.id,
+    } as const;
+    const sortColumn = sortColumns[sortKey];
+    
+    const itemsQuery = req.db!
       .select()
-      .from(products);
-    if (filterCondition) {
-      itemsQuery = itemsQuery.where(filterCondition);
-    }
+      .from(products)
+      .where(filterCondition);
     const items = await itemsQuery
       .orderBy(orderParam === 'asc' ? asc(sortColumn) : desc(sortColumn))
       .limit(perPage)

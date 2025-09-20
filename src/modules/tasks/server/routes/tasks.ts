@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { asc, count, desc, eq, ilike } from 'drizzle-orm';
+import { asc, count, desc, eq, ilike, sql } from 'drizzle-orm';
 import { authenticated, authorized } from '../../../../server/middleware/authMiddleware';
 import { validateData } from '../../../../server/middleware/validationMiddleware';
 import { taskManagementSchema, taskManagementEditSchema } from '../schemas/taskManagementSchema';
@@ -26,41 +26,30 @@ router.get("/task-managements",
 
     const filterCondition = filterParam
       ? ilike(taskManagements.name, `%${filterParam}%`)
-      : undefined;
+      : sql`true`;
 
-    let countQuery = req.db!
+    const countQuery = req.db!
       .select({ value: count() })
-      .from(taskManagements);
-    if (filterCondition) {
-      countQuery = countQuery.where(filterCondition);
-    }
+      .from(taskManagements)
+      .where(filterCondition);
     const [{ value: total }] = await countQuery;
 
     const validSortColumns = ['name', 'createdAt', 'updatedAt', 'id'] as const;
     const sortKey = validSortColumns.includes(sortParam as any) ? sortParam : 'name';
     
-    let itemsQuery = req.db!
-      .select()
-      .from(taskManagements);
-    if (filterCondition) {
-      itemsQuery = itemsQuery.where(filterCondition);
-    }
+    // Typed sort column mapping
+    const sortColumns = {
+      name: taskManagements.name,
+      createdAt: taskManagements.createdAt,
+      updatedAt: taskManagements.updatedAt,
+      id: taskManagements.id,
+    } as const;
+    const sortColumn = sortColumns[sortKey];
     
-    let sortColumn;
-    switch (sortKey) {
-      case 'name':
-        sortColumn = taskManagements.name;
-        break;
-      case 'createdAt':
-        sortColumn = taskManagements.createdAt;
-        break;
-      case 'updatedAt':
-        sortColumn = taskManagements.updatedAt;
-        break;
-      default:
-        sortColumn = taskManagements.id;
-        break;
-    }
+    const itemsQuery = req.db!
+      .select()
+      .from(taskManagements)
+      .where(filterCondition);
     
     const items = await itemsQuery
       .orderBy(orderParam === 'asc' ? asc(sortColumn) : desc(sortColumn))
