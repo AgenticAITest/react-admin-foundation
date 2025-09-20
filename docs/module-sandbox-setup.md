@@ -12,466 +12,416 @@ The Module Sandbox provides a complete isolated development environment for crea
 - ✅ **Version Control** - Each module can have its own development history
 - ✅ **Team Collaboration** - Multiple developers can work on different modules
 - ✅ **Easy Integration** - Copy proven modules back to foundation
+- ✅ **Turnkey Experience** - Download → extract → `npm run dev`
 
-## 🔄 Setup Options
+## 🚀 Quick Start (Recommended)
 
-### Option 1: Create New Replit Project (Recommended)
+### Step 1: Download Template
+
+1. **Download the latest template:**
+   - Use `docs/module-sandbox-template-v2.zip` (33.4KB)
+   - Contains all fixes and improvements from the 3-phase consistency update
+
+2. **Extract and Setup:**
+   ```bash
+   # Extract template
+   unzip module-sandbox-template-v2.zip
+   cd module-sandbox-template
+   
+   # Install dependencies
+   npm install
+   
+   # Configure environment
+   cp .env.example .env
+   # Edit .env with your DATABASE_URL
+   
+   # Initialize database
+   npm run db:push
+   
+   # Start development
+   npm run dev
+   ```
+
+3. **Verify Setup:**
+   - Frontend: http://localhost:5173
+   - API Health: http://localhost:8787/api/plugins/sample/health → `200 { "ok": true }`
+   - Sample data should load automatically
+
+### Step 2: Customize Your Module
+
+**Template Structure (Ready to Use):**
+```
+📁 Turnkey Template:
+├── server/index.ts         # 🎯 YOUR MAIN FOCUS - Plugin business logic
+├── sandbox/               # ✅ Infrastructure (self-sufficient)
+│   ├── bootstrap.ts       # Auto-creates sys_tenant, tenant schema, tables
+│   ├── rbac.ts           # Permission system with RBAC seeding
+│   ├── server.ts         # CORS-enabled API server with error handling
+│   └── withTenantTx.ts   # Database tenant isolation helpers
+├── client/src/            # ✅ React frontend components
+│   ├── components/        # Reusable UI components  
+│   ├── hooks/            # Custom React hooks
+│   ├── lib/              # Utilities and helpers
+│   ├── provider/         # Context providers
+│   ├── main.tsx          # React app entry
+│   └── styles.css        # Styling
+├── shared/schema.ts       # ✅ Database schema (no tenantId needed)
+├── foundation-adapter/    # ✅ Integration examples for foundation
+├── vite.config.ts        # ✅ CORS proxy configuration
+├── tsconfig.json         # ✅ Fixed path aliases
+├── .env.example          # Environment template
+├── package.json          # ✅ All dependencies included
+└── README.md             # Complete setup guide
+```
+
+## 🔄 Alternative Setup Options
+
+### Option 1: Create New Replit Project
 
 This approach creates a completely separate development environment.
 
-#### Step 1: Create New Sandbox Project
-
 1. **In Replit Dashboard:**
-   - Click "Create" → "New Repl"
+   - Click "Create" → "New Repl" 
    - Choose "Node.js" template
-   - Name it: `module-sandbox-template`
+   - Name it: `my-module-sandbox`
 
-2. **Connect to New GitHub Repository:**
+2. **Upload Template:**
+   - Download and extract `module-sandbox-template-v2.zip`
+   - Upload all files to your new Replit project
+   - Run `npm install` and `npm run dev`
+
+3. **Connect to GitHub (Optional):**
    - In Replit project, open Version Control panel
-   - Click "Create new repository"
-   - Repository name: `module-sandbox-template`
-   - Set as public/private as needed
+   - Click "Create new repository" or connect to existing
 
-#### Step 2: Copy Sandbox Structure
+### Option 2: Local Development
 
-Copy these components from your foundation repository to the new sandbox project:
+If you prefer to work locally first:
 
-```
-📁 Clean Plugin Architecture:
-├── server/
-│   └── index.ts            # Pure plugin with business logic (MAIN FOCUS)
-├── sandbox/
-│   ├── bootstrap.ts        # Database initialization
-│   ├── rbac.ts            # Permission system
-│   ├── server.ts          # Infrastructure server
-│   └── withTenantTx.ts    # Database helpers
-├── client/
-│   ├── src/
-│   │   ├── components/    # UI components
-│   │   ├── hooks/         # React hooks
-│   │   ├── lib/           # Utilities
-│   │   ├── provider/      # Context providers
-│   │   ├── main.tsx       # React app entry
-│   │   └── styles.css     # Styling
-│   └── index.html         # HTML template
-├── shared/
-│   └── schema.ts          # Database schema
-├── vite.config.ts         # Vite proxy configuration
-├── .env.example          # Environment variables template
-├── package.json          # Dependencies
-└── README.md             # Setup instructions
-```
-
-#### Step 3: Install Dependencies
-
-Create `package.json` with sandbox-specific dependencies:
-
-```json
-{
-  "name": "module-sandbox-template",
-  "version": "1.0.0",
-  "description": "Module development sandbox for React Admin Foundation",
-  "scripts": {
-    "dev:api": "tsx sandbox/server.ts",
-    "dev:web": "vite --port 5173",
-    "dev": "concurrently -k -n api,web -c blue,green \"npm:dev:api\" \"npm:dev:web\"",
-    "build": "vite build",
-    "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio"
-  },
-  "dependencies": {
-    "@types/express": "^5.0.1",
-    "@types/node": "^22.15.2",
-    "drizzle-orm": "^0.44.4",
-    "express": "^5.1.0",
-    "pg": "^8.16.3",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
-    "tsx": "^4.20.3",
-    "typescript": "^5.8.3",
-    "vite": "^6.3.3",
-    "concurrently": "^9.1.0"
-  },
-  "devDependencies": {
-    "@types/pg": "^8.15.5",
-    "@vitejs/plugin-react": "^4.4.1",
-    "drizzle-kit": "^0.31.4"
-  }
-}
-```
-
-### Option 2: Download and Manual Setup
-
-If you prefer to work outside Replit initially:
-
-#### Step 1: Download Components
-
-From your current foundation project:
-1. Download the `sandbox/` folder
-2. Download the `client/` folder  
-3. Download the `shared/` folder (schema.ts)
-4. Download configuration files (vite.config.ts, tsconfig.json, .env.example)
-
-#### Step 2: Create GitHub Repository
-
-1. **Create new repository on GitHub:**
-   ```
-   Repository name: module-sandbox-template
-   Description: Module development sandbox for React Admin Foundation
-   Public/Private: Your choice
-   ```
-
-2. **Upload files to repository:**
-   - Upload downloaded folders
-   - Add package.json with dependencies
-   - Create README.md with setup instructions
-
-#### Step 3: Connect to Replit
-
-1. In Replit, choose "Import from GitHub"
-2. Select your new `module-sandbox-template` repository
-3. Replit will automatically set up the environment
-
-## 🚀 Development Workflow
-
-### Initial Setup
-
-1. **Clone/Open the Sandbox Repository:**
+1. **Download and Extract:**
    ```bash
-   # If working locally
-   git clone https://github.com/your-username/module-sandbox-template
+   # Download module-sandbox-template-v2.zip
+   unzip module-sandbox-template-v2.zip
    cd module-sandbox-template
    ```
 
-2. **Install Dependencies:**
+2. **Setup Environment:**
    ```bash
    npm install
-   ```
-
-3. **Configure Environment:**
-   Create `.env` file from template:
-   ```bash
    cp .env.example .env
+   # Configure your DATABASE_URL
    ```
-   
-   Set required variables:
+
+3. **Connect to GitHub:**
    ```bash
-   DATABASE_URL=postgresql://username:password@host:port/database
-   DEV_TENANT_CODE=dev
-   DEV_TENANT_SCHEMA=main
-   PORT=8787
+   git init
+   git add .
+   git commit -m "Initial sandbox setup"
+   git remote add origin https://github.com/your-username/my-module-sandbox
+   git push -u origin main
    ```
 
-4. **Initialize Database:**
-   ```bash
-   npm run db:push
-   ```
+## 🛠️ Development Workflow
 
-### Module Development Process
+### Phase 1: Module Setup
 
-#### Phase 1: Setup New Module
-
-1. **Replace Module ID:**
-   - Update `MODULE_ID` constant in `server/index.ts`
-   - Example: Change `'sample'` to `'inventory'`, `'orders'`, `'products'`, etc.
-
-2. **Customize Database Schema:**
+1. **Customize Module ID:**
    ```typescript
-   // In shared/schema.ts - add your module tables (NO tenantId needed)
-   export const inventory = pgTable('inventory', {
-     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-     name: varchar("name", { length: 255 }).notNull(),
-     quantity: integer("quantity").default(0),
-     createdAt: timestamp("created_at").defaultNow(),
+   // In server/index.ts - change the module identifier
+   const MODULE_ID = 'inventory'; // Change from 'sample'
+   
+   const plugin = {
+     meta: { id: 'inventory', version: '0.1.0', api: '1.x' },
+     // ... rest of plugin
+   };
+   ```
+
+2. **Define Database Schema:**
+   ```typescript
+   // In shared/schema.ts - add your module tables
+   // ✅ NO tenantId column needed - isolation via schema-per-tenant
+   export const products = pgTable('products', {
+     id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+     name: varchar('name', { length: 255 }).notNull(),
+     description: text('description'),
+     price: decimal('price', { precision: 10, scale: 2 }),
+     isActive: boolean('is_active').default(true),
+     createdAt: timestamp('created_at').defaultNow().notNull(),
+     updatedAt: timestamp('updated_at').defaultNow().notNull(),
    });
    ```
 
-3. **Implement Plugin Business Logic:**
+3. **Implement Business Logic:**
    ```typescript
-   // In server/index.ts - your pure plugin implementation
+   // In server/index.ts - your clean plugin implementation
    const plugin = {
      meta: { id: 'inventory', version: '0.1.0', api: '1.x' },
      
      async register(ctx: PluginContext) {
-       // Add your CRUD endpoints using ctx.router, ctx.rbac, ctx.withTenantTx
-       ctx.router.get('/items', ctx.rbac.require('inventory.items.read'), async (req: any, res) => {
-         const rows = await ctx.withTenantTx(req.auth?.tenant_id, async (db) => {
-           const r = await db.execute('select * from items order by created_at desc');
-           return (r as any).rows ?? r;
+       // ✅ CRUD endpoints with proper RBAC and tenant isolation
+       ctx.router.get('/products', ctx.rbac.require('inventory.products.read'), async (req: any, res) => {
+         const products = await ctx.withTenantTx(req.auth?.tenant_id, async (db) => {
+           const result = await db.execute('SELECT * FROM products ORDER BY created_at DESC');
+           return (result as any).rows ?? result;
          });
-         res.json(rows);
+         res.json(products);
        });
        
-       ctx.log('registered');
+       ctx.router.post('/products', ctx.rbac.require('inventory.products.create'), async (req: any, res) => {
+         const { name, price } = req.body ?? {};
+         if (!name?.trim()) return res.status(400).json({ error: 'NAME_REQUIRED' });
+         
+         const product = await ctx.withTenantTx(req.auth?.tenant_id, async (db) => {
+           const result = await db.execute(
+             'INSERT INTO products (name, price) VALUES ($1, $2) RETURNING *',
+             [name, price || 0]
+           );
+           return ((result as any).rows ?? result)[0];
+         });
+         res.status(201).json(product);
+       });
+       
+       ctx.log('Inventory plugin registered successfully');
      },
    };
    
-   export const permissions = ['inventory.items.read', 'inventory.items.create'];
+   export const permissions = [
+     'inventory.products.read',
+     'inventory.products.create',
+     'inventory.products.update',
+     'inventory.products.delete',
+   ];
    export default plugin;
    ```
 
-#### Phase 2: Develop Features
+### Phase 2: Development & Testing
 
 1. **Start Development Servers:**
    ```bash
-   # Start both servers together (recommended)
+   # ✅ Both servers with CORS and hot reload
    npm run dev
    
-   # Or start separately in two terminals
-   npm run dev:api     # API server on port 8787
-   npm run dev:web     # Vite dev server on port 5173
+   # Access points:
+   # - Frontend: http://localhost:5173 (Vite dev server)
+   # - API: http://localhost:8787/api/plugins/inventory/*
+   # - Health: http://localhost:8787/api/plugins/inventory/health
    ```
 
-2. **Access Development Interface:**
-   - Frontend: http://localhost:5173 (Vite dev server)
-   - API Health: http://localhost:8787/api/plugins/sample/health
-   - Professional dashboard interface with hot reload
-   - Vite proxy automatically routes `/api` calls to backend
+2. **Validate Setup:**
+   - ✅ **Bootstrap Success:** Database creates `public.sys_tenant` and `tenant_dev` schema automatically
+   - ✅ **Plugin Registration:** Console shows successful plugin registration
+   - ✅ **RBAC Seeding:** Permissions seeded for development user
+   - ✅ **API Health:** Health endpoint returns `200 { "ok": true }`
+   - ✅ **Frontend Integration:** React app loads and can interact with API
 
-3. **Develop Module Features:**
-   - **Plugin Logic:** Implement business logic in `server/index.ts`
-   - **Frontend:** Customize UI components in `client/src/`
-   - **Database:** Add/modify tables in `shared/schema.ts`
-   - **Infrastructure:** Sandbox handles permissions, auth, hosting
+3. **Develop Features:**
+   - **Plugin Logic:** Focus on `server/index.ts` - your pure business logic
+   - **Database:** Modify `shared/schema.ts` and run `npm run db:push`
+   - **Frontend:** Customize UI in `client/src/main.tsx`
+   - **Testing:** Use dashboard interface to test CRUD operations
 
-#### Phase 3: Test and Validate
+### Phase 3: Foundation Integration
 
-1. **RBAC Testing:**
-   - Use the Permissions section to validate access control
-   - Test different permission combinations
-   - Verify UI shows/hides elements correctly
+When your module is ready for production integration:
 
-2. **Database Operations:**
-   - Test CRUD operations through the dashboard
-   - Verify tenant isolation works correctly
-   - Check data persistence and queries
+1. **Download Integration Package:**
+   - Use `docs/foundation-integration-package.zip`
+   - Contains adapter examples and integration documentation
 
-3. **API Testing:**
-   - Use the health check endpoint
-   - Test all API endpoints manually
-   - Verify error handling and validation
-
-#### Phase 4: Integration Back to Foundation
-
-1. **Prepare Module for Integration:**
+2. **Copy Module Files:**
    ```bash
-   # Copy your pure plugin implementation
-   cp server/index.ts ../foundation/src/modules/inventory/
-   cp -r client/src/ ../foundation/src/client/modules/inventory/
+   # Copy your plugin to foundation
+   cp server/index.ts ../foundation/src/modules/inventory/server/plugin.ts
    cp shared/schema.ts ../foundation/src/modules/inventory/schema.ts
+   cp -r client/src/ ../foundation/src/client/modules/inventory/
    ```
 
-2. **Update Foundation Application:**
-   - Add module routes to main application
-   - Update navigation menus with new module
-   - Integrate RBAC permissions into main system
-   - Run database migrations if schema changed
+3. **Create Foundation Adapter:**
+   ```typescript
+   // foundation: src/modules/inventory/server/routes/index.ts
+   import { Router } from 'express';
+   import plugin, { permissions as pluginPermissions } from '../../../server/plugin';
+   import { withTenantTx } from '../../../../lib/db/tenant-db';
+   import { requirePermission } from '../../../../lib/security/rbac';
+   
+   const router = Router();
+   const ctx = {
+     router,
+     rbac: { require: (perm: string) => requirePermission(perm) },
+     withTenantTx,
+     log: (msg: string, meta?: object) => console.log(JSON.stringify({...}))
+   };
+   
+   await plugin.register(ctx);
+   export const permissions = pluginPermissions;
+   export default router; // ← Foundation expects this export
+   ```
 
-3. **Clean Integration:**
-   - Test module within main application
-   - Verify tenant isolation still works
-   - Confirm RBAC integration is seamless
-   - Update documentation and user guides
+4. **Add Module Configuration:**
+   ```typescript
+   // foundation: src/modules/inventory/module.config.ts
+   export default {
+     id: 'inventory',
+     name: 'Inventory Management',
+     version: '1.0.0',
+     api: '1.x',
+     permissions: [
+       'inventory.products.read',
+       'inventory.products.create',
+       'inventory.products.update', 
+       'inventory.products.delete',
+     ],
+     nav: {
+       basePath: '/app/inventory',
+       items: [
+         { path: '/app/inventory/products', label: 'Products', permissions: ['inventory.products.read'] }
+       ]
+     }
+   };
+   ```
+
+The foundation automatically discovers and mounts your module at `/api/plugins/inventory/*`!
 
 ## 🔧 Configuration Details
 
 ### Environment Variables
 
-Required environment variables for sandbox operation:
-
+**Required Variables:**
 ```bash
 # Database (automatically configured in Replit)
 DATABASE_URL=postgresql://username:password@host:port/database
 
-# Sandbox Development Settings
-DEV_TENANT_CODE=dev
-DEV_TENANT_SCHEMA=tenant_dev
-PORT=8787
-
-# Optional settings
-NODE_ENV=development
+# Sandbox Settings
+DEV_TENANT_CODE=dev              # Default tenant for development
+DEV_TENANT_SCHEMA=tenant_dev     # Tenant schema name
+PORT=8787                        # API server port (5173 for Vite)
+NODE_ENV=development             # Development mode
 ```
 
-### Module Customization
+### Key Architecture Improvements (v2 Template)
 
-#### Clean Plugin Pattern
+**✅ Phase 1 Fixes - Bootstrap Self-Sufficiency:**
+- Creates `public.sys_tenant` table automatically before upserts
+- CORS middleware enables smooth Vite proxy integration 
+- Fixed tsconfig path aliases `@client/*` → `./client/src/*`
 
-The core of your module is the plugin in `server/index.ts`:
+**✅ Phase 2 Fixes - Plugin Contract Adapter:**
+- Clean `register(ctx)` authoring API preserved for business analysts
+- Adapter pattern bridges plugin code to foundation Router exports
+- Complete integration examples in `foundation-adapter/` directory
 
-```typescript
-// Module metadata
-export const meta = {
-  id: 'your-module',  // ← Change this ID
-  name: 'Your Module',
-  version: '0.1.0'
-};
-
-// Plugin registration with dependency injection
-export const register = (ctx: PluginContext) => {
-  // Use ctx.router for routes
-  // Use ctx.rbac.require() for permissions
-  // Use ctx.withTenantTx() for database operations
-  // Use ctx.log for logging
-};
-```
-
-#### Add Custom Business Logic
-
-**Database Schema (shared/schema.ts):**
-```typescript
-// Schema-per-tenant: NO tenantId column needed - isolation via search_path
-export const yourModuleTable = pgTable('your_module', {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: varchar("name", { length: 255 }).notNull(),
-  // Add your specific fields here
-  createdAt: timestamp("created_at").defaultNow(),
-});
-```
-
-**Plugin Implementation (server/index.ts):**
-```typescript
-const plugin = {
-  meta: { id: 'your-module', version: '0.1.0', api: '1.x' },
-  
-  async register(ctx: PluginContext) {
-    // CRUD endpoints with proper dependency injection
-    ctx.router.get('/items', ctx.rbac.require('your-module.items.read'), async (req: any, res) => {
-      const rows = await ctx.withTenantTx(req.auth?.tenant_id, async (db) => {
-        const r = await db.execute('select id, name, created_at from items order by created_at desc');
-        return (r as any).rows ?? r;
-      });
-      res.json(rows);
-    });
-    
-    ctx.router.post('/items', ctx.rbac.require('your-module.items.create'), async (req: any, res) => {
-      const { name } = req.body ?? {};
-      if (!name || !String(name).trim()) return res.status(400).json({ error: 'NAME_REQUIRED' });
-      const row = await ctx.withTenantTx(req.auth?.tenant_id, async (db) => {
-        const r = await db.execute('insert into items (name) values ($1) returning id, name, created_at', [name]);
-        return ((r as any).rows ?? r)[0];
-      });
-      res.status(201).json(row);
-    });
-    
-    ctx.log('registered');
-  },
-};
-
-export default plugin;
-```
-
-**UI Components (client/src/main.tsx):**
-```typescript
-// Customize the dashboard sections
-// Add your module-specific UI components
-// Implement your business workflows
-```
-
-## 📝 Best Practices
-
-### Development Guidelines
-
-1. **Schema-per-Tenant Isolation:**
-   ```typescript
-   // NO manual tenant filtering needed - isolation via search_path
-   const items = await ctx.withTenantTx(req.auth?.tenant_id, async (db) => {
-     const r = await db.execute('select * from your_table order by created_at desc');
-     return (r as any).rows ?? r;
-   });
-   ```
-
-2. **Implement Proper RBAC:**
-   ```typescript
-   // Define granular permissions
-   'your-module.items.read'
-   'your-module.items.create'
-   'your-module.items.update'
-   'your-module.items.delete'
-   'your-module.admin'
-   ```
-
-3. **Follow UI Patterns:**
-   - Use the same component structure as the dashboard
-   - Implement consistent styling and interactions
-   - Follow the permission-based visibility patterns
-
-4. **Test Thoroughly:**
-   - Test all CRUD operations
-   - Verify permission enforcement
-   - Validate tenant isolation
-   - Check error handling
-
-### Code Organization
-
-```
-📁 Clean Plugin Architecture:
-├── Pure Plugin (server/index.ts)        # ← YOUR MAIN FOCUS
-├── Database Schema (shared/schema.ts)    # ← Define your tables
-├── Frontend Components (client/src/)     # ← Build your UI
-├── Infrastructure (sandbox/)             # ← Managed by system
-│   ├── bootstrap.ts                     #   Database initialization
-│   ├── rbac.ts                         #   Permission system
-│   ├── server.ts                       #   Hosting infrastructure
-│   └── withTenantTx.ts                 #   Database helpers
-└── Development (vite.config.ts)         # ← Proxy configuration
-```
+**✅ Phase 3 Fixes - Schema Consistency:**
+- Removed `tenantId` columns from module schemas (schema-per-tenant only)
+- Fixed Drizzle ORM query builder type issues
+- Aligned isolation patterns between sandbox and foundation
 
 ## 🚨 Common Issues and Solutions
 
-### Database Driver Conflicts
+### Template Version
 
-**Problem:** "Cannot resolve module 'postgres'" or driver conflicts
-**Solution:** Use only `pg` with `drizzle-orm/node-postgres` - Remove `postgres` (Postgres.js) from dependencies
+**Problem:** Using old template with bootstrap or type issues
+**Solution:** Always use `docs/module-sandbox-template-v2.zip` - contains all fixes
 
-### Schema-per-Tenant Errors
+### Database Bootstrap Errors
+
+**Problem:** "sys_tenant table does not exist" or bootstrap failures
+**Solution:** ✅ Fixed in v2 - bootstrap creates all required tables automatically
+
+### CORS Proxy Errors
+
+**Problem:** Frontend can't reach API, preflight request failures
+**Solution:** ✅ Fixed in v2 - CORS middleware enabled in sandbox server
+
+### Drizzle Type Errors
+
+**Problem:** Query builder type mismatches, dynamic column selection errors
+**Solution:** ✅ Fixed in v2 - proper typed query patterns implemented
+
+### Schema-per-Tenant Issues
 
 **Problem:** "tenantId column not found" in tenant schema tables
-**Solution:** Remove `tenantId` columns from tables in tenant schemas - isolation is done by `search_path`
+**Solution:** ✅ Fixed in v2 - no tenantId columns in module schemas, isolation via `search_path`
 
-### Plugin Contract Mismatches
+### Plugin Contract Issues
 
-**Problem:** Plugin not registering or imports failing
-**Solution:** Ensure `export default plugin` with `meta: { id, version, api: '1.x' }` and `export const permissions`
+**Problem:** Plugin not registering, import/export mismatches
+**Solution:** ✅ Documented in v2 - use `export default plugin` + `export const permissions`
 
-### Development Server Issues
+## 📋 Verification Checklist
 
-**Problem:** Vite proxy not routing API calls
-**Solution:** Verify API server runs on port 8787 and Vite proxies `/api` correctly
+Before using your module in production:
 
-### Permission Seeding Failures
+1. **✅ Template Version:** Using `module-sandbox-template-v2.zip`
+2. **✅ Bootstrap Success:** First run creates all database structures automatically
+3. **✅ Health Endpoint:** `GET /api/plugins/[module]/health` → `200 { "ok": true }`
+4. **✅ API Operations:** CRUD endpoints work with proper RBAC enforcement
+5. **✅ Frontend Integration:** React app loads and communicates with API via proxy
+6. **✅ Schema Compliance:** No `tenantId` columns in tenant schema tables
+7. **✅ Plugin Contract:** Default export with `meta`, `register()`, `permissions` export
+8. **✅ CORS Working:** No preflight errors, smooth proxy operation
+9. **✅ Development Flow:** Both servers start cleanly with `npm run dev`
+10. **✅ Foundation Ready:** Integration adapter examples understood and ready
 
-**Problem:** RBAC permissions not working
-**Solution:** Check `plugin.permissions` export and `seedPermissions()` call in sandbox/server.ts
+## 💡 Best Practices
 
-## 📚 Sanity Checklist
+### Plugin Development Patterns
 
-Before considering your sandbox complete, verify:
+1. **Clean Architecture:**
+   ```typescript
+   // Focus on business logic in register() function
+   const plugin = {
+     meta: { id: 'your-module', version: '0.1.0', api: '1.x' },
+     async register(ctx: PluginContext) {
+       // Use dependency injection: ctx.router, ctx.rbac, ctx.withTenantTx
+     },
+   };
+   ```
 
-1. **✅ Health Endpoint:** `GET /api/plugins/sample/health` → `200 { ok: true }`
-2. **✅ Bootstrap Success:** First run creates `public.sys_tenant`, `tenant_dev` schema, `items` table, and RBAC tables
-3. **✅ API Operations:** `GET /api/plugins/sample/items` → `200` (permissions seeded for user 'dev')
-4. **✅ React Integration:** Frontend loads and can add/list items via proxy
-5. **✅ Schema Compliance:** No `tenantId` columns inside tenant schema tables
-6. **✅ Plugin Contract:** Default export with `meta`, `register()`, and `permissions` export
-7. **✅ Development Flow:** Both servers start with `npm run dev`
+2. **Schema-per-Tenant:**
+   ```typescript
+   // NO tenantId columns - isolation via search_path
+   export const items = pgTable('items', {
+     id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+     name: varchar('name', { length: 255 }).notNull(),
+     // ❌ tenantId: varchar('tenant_id') -- NOT NEEDED
+   });
+   ```
 
-## 💡 Production-Ready Patterns
+3. **RBAC Integration:**
+   ```typescript
+   // Granular permission naming
+   export const permissions = [
+     'module.resource.read',    // List/view operations
+     'module.resource.create',  // Create operations
+     'module.resource.update',  // Edit operations
+     'module.resource.delete',  // Delete operations
+     'module.admin',           // Administrative functions
+   ];
+   ```
 
-- **Plugin Contract:** Always use `export default { meta, register }` + `export const permissions`
-- **Database Access:** Use `req.auth.tenant_id` and `ctx.withTenantTx()` for proper tenant isolation
-- **Error Handling:** Return structured errors (`{ error: 'CODE' }`) with proper HTTP status codes
-- **Schema Design:** No `tenantId` in tenant schema tables - isolation via `search_path`
-- **Permission Naming:** Use `module-id.resource.action` format (e.g., `inventory.items.read`)
-- **Development Flow:** Use `npm run dev` for concurrent API + web servers with hot reload
-- **Foundation Integration:** Copy `server/index.ts` directly to main application module structure
+4. **Error Handling:**
+   ```typescript
+   // Structured error responses
+   if (!name?.trim()) {
+     return res.status(400).json({ error: 'NAME_REQUIRED' });
+   }
+   ```
 
-## 🔗 Related Documentation
+### Development Workflow
 
-- [React Admin Foundation Architecture](./architecture.md)
-- [RBAC Implementation Guide](./rbac-guide.md)
-- [Database Schema Guidelines](./database-guidelines.md)
-- [Module Integration Process](./module-integration.md)
+1. **Start Simple:** Use template sample module as reference
+2. **Iterate Fast:** `npm run dev` provides hot reload for both API and UI
+3. **Test Thoroughly:** Use dashboard interface to validate CRUD and RBAC
+4. **Document Changes:** Update module README with your customizations
+5. **Foundation Ready:** Use integration package when ready for production
+
+## 🔗 Related Resources
+
+- **Template**: `docs/module-sandbox-template-v2.zip` (turnkey development environment)
+- **Integration**: `docs/foundation-integration-package.zip` (production integration examples)
+- **Architecture**: Foundation schema-per-tenant design patterns
+- **RBAC**: Permission-based access control implementation guide
 
 ---
 
-**Ready to build your first module?** Follow this guide to set up your sandbox environment and start developing professional business modules with confidence!
+**Ready to build your first module?** Download `module-sandbox-template-v2.zip`, extract, and run `npm run dev` to start developing professional business modules with confidence!
