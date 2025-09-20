@@ -35,10 +35,7 @@ The Module Sandbox provides a complete isolated development environment for crea
    cp .env.example .env
    # Edit .env with your DATABASE_URL
    
-   # Initialize database
-   npm run db:push
-   
-   # Start development
+   # Start development (bootstrap handles database setup automatically)
    npm run dev
    ```
 
@@ -216,7 +213,7 @@ If you prefer to work locally first:
 
 3. **Develop Features:**
    - **Plugin Logic:** Focus on `server/index.ts` - your pure business logic
-   - **Database:** Modify `shared/schema.ts` and run `npm run db:push`
+   - **Database:** Modify `shared/schema.ts` (changes applied on next restart)
    - **Frontend:** Customize UI in `client/src/main.tsx`
    - **Testing:** Use dashboard interface to test CRUD operations
 
