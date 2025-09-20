@@ -1,0 +1,230 @@
+Got it—here’s a single, consolidated set of suggestions (with exact drop-in patches) that merges everything we discussed so you won’t need to reconcile two lists.
+
+1) Fix-now blockers (sandbox)
+A) Add db/client.ts
+// db/client.ts
+import { Pool, PoolClient } from 'pg';
+import { drizzle } from 'drizzle-orm/node-postgres';
+
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) throw new Error('DATABASE_URL is required');
+
+export const pool = new Pool({
+  connectionString,
+  max: 10,
+  // ssl: { rejectUnauthorized: false }, // uncomment if needed
+});
+
+export function makeDb(client: PoolClient) {
+  return drizzle(client, { logger: process.env.NODE_ENV !== 'production' });
+}
+
+
+Why: your sandbox structure references a db/ layer and relies on withTenantTx + Drizzle; this file completes the plumbing. 
+
+project_handoff
+
+B) Ensure public.sys_tenant exists in sandbox/bootstrap.ts
+
+Add before your upsert/seed logic:
+
+await pool.query(`
+  create table if not exists public.sys_tenant (
+    id uuid primary key default gen_random_uuid(),
+    code text unique not null,
+    name text not null,
+    domain text,
+    schema_name text not null
+  );
+`);
+
+
+Why: your “first run creates sys_tenant + tenant schema” checklist expects this table. 
+
+module-sandbox-setup
+
+C) Fix tsconfig.json path alias
+"paths": {
+  "@client/*": ["./client/src/*"]
+}
+
+
+Why: matches the actual client/src layout. 
+
+project_handoff
+
+D) Add CORS + error handler in sandbox/server.ts
+import cors from 'cors';
+
+app.use(cors({ origin: true, credentials: true }));
+
+app.use((err:any, _req:any, res:any, _next:any) => {
+  console.error(err);
+  res.status(500).json({ error: 'INTERNAL_ERROR' });
+});
+
+
+Why: smooth dev via Vite proxy and consistent JSON errors. Your docs emphasize manual API testing + structured errors. 
+
+module-sandbox-setup
+
+ 
+
+module-sandbox-setup
+
+2) Foundation integration (make sandbox modules first-class)
+A) Adapter wrapper: keep sandbox’s register(ctx) contract, expose a Router for the foundation
+
+Create in foundation:
+src/modules/<MODULE_ID>/server/routes/index.ts
+
+import { Router } from 'express';
+import plugin, { permissions as pluginPermissions } from '../plugin'; // or from your vendored sandbox package
+import { withTenantTx } from '../../../lib/db/tenant-db';
+import { requirePermission } from '../../../lib/security/rbac'; // replace with actual RBAC factory
+
+const router = Router();
+
+const ctx = {
+  router,
+  rbac: { require: (perm: string) => requirePermission(perm) },
+  withTenantTx,
+  log: (msg: string, meta?: object) =>
+    console.log(JSON.stringify({ at: 'plugin', plugin: plugin.meta?.id ?? '<MODULE_ID>', msg, ...meta })),
+};
+
+await plugin.register(ctx);
+export const permissions = pluginPermissions;
+export default router;
+
+
+Why: foundation’s route registry wants a default Router export; your sandbox uses export default { meta, register(ctx) }. The adapter bridges both without changing the sandbox. Your contract: meta.api: '1.x', ctx carries {router, withTenantTx, rbac.require, log}. 
+
+project_handoff
+
+B) Add module.config.ts beside the wrapper
+
+src/modules/<MODULE_ID>/module.config.ts
+
+export default {
+  id: '<MODULE_ID>',
+  name: '<Readable Name>',
+  version: '1.0.0',
+  api: '1.x',
+  permissions: [
+    '<MODULE_ID>.items.read',
+    '<MODULE_ID>.items.create',
+    '<MODULE_ID>.items.update',
+    '<MODULE_ID>.items.delete',
+  ],
+  nav: {
+    basePath: `/app/${'<MODULE_ID>'}`,
+    items: [{ path: `/app/${'<MODULE_ID>'}/items`, label: 'Items', permissions: ['<MODULE_ID>.items.read'] }]
+  },
+};
+
+
+Why: aligns discovery/registration with your “clean plugin pattern” & permission naming. 
+
+module-sandbox-setup
+
+ 
+
+module-sandbox-setup
+
+3) Tenancy model alignment (choose one; recommended below)
+
+Recommended (Option A): Schema-per-tenant, no tenant_id columns
+Patch the foundation’s deployer DDL to omit tenant_id and rely entirely on withTenantTx setting search_path:
+
+Before (simplified):
+
+await tenantDb.execute(sql`
+  CREATE TABLE IF NOT EXISTS ${sql.identifier(tableName)} (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id uuid NOT NULL,
+    name varchar(255) NOT NULL,
+    created_at timestamp DEFAULT now() NOT NULL
+  );
+`);
+
+
+After (schema-per-tenant):
+
+await tenantDb.execute(sql`
+  CREATE TABLE IF NOT EXISTS ${sql.identifier(tableName)} (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    name varchar(255) NOT NULL,
+    created_at timestamp DEFAULT now() NOT NULL,
+    updated_at timestamp DEFAULT now() NOT NULL
+  );
+`);
+
+
+And ensure your txn helper sets search_path:
+
+await client.query('begin');
+await client.query(`set local search_path to "${schema}", public`);
+const result = await run(drizzle(client));
+await client.query('commit');
+
+
+Why: your handoff + setup docs consistently specify schema-per-tenant with no tenantId columns; isolation is handled by search_path. 
+
+project_handoff
+
+ 
+
+project_handoff
+
+ 
+
+module-sandbox-setup
+
+(If you must keep tenant_id columns instead, update sandbox CRUD to insert/filter tenant_id. Not recommended—adds noise and duplication.)
+
+4) Module DDL ingestion (keep it simple & robust)
+
+Adopt per-module SQL migrations rather than importing TS schema objects at runtime:
+
+Place migrations under:
+src/modules/<MODULE_ID>/migrations/*.sql
+
+Run them inside the tenant context:
+
+// pseudo: runModuleMigrations(moduleId, tenantId)
+await withTenantTx(tenantId, async (db) => {
+  for (const file of listSqlFiles(moduleId)) {
+    const sqlText = fs.readFileSync(file, 'utf8');
+    await db.execute(sqlText);
+  }
+});
+
+
+Why: keeps DDL versioned alongside the module, avoids cross-build TS imports, and respects search_path. Your docs already emphasize schema-per-tenant + withTenantTx. 
+
+module-sandbox-setup
+
+ 
+
+module-sandbox-setup
+
+5) Sanity checklist (quick pass after wiring)
+
+Health is open: GET /api/plugins/<id>/health → 200 { ok: true }. 
+
+project_handoff
+
+Protected routes gate correctly: 403 until permissions seeded, then 2xx. 
+
+project_handoff
+
+Bootstrap creates tenant schema + RBAC tables on first run. 
+
+module-sandbox-setup
+
+No tenantId columns inside tenant schemas (confirm). 
+
+project_handoff
+
+Contract stays api: '1.x' and unknown permissions deny by default.
